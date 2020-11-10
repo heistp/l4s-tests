@@ -1,0 +1,477 @@
+##
+#
+# L4S Tests
+#
+# Several tests of L4S in comparison to present congestion control
+#
+# Pete Heist
+#
+# Scenarios:
+# s1-rttfair: RTT Fairness
+# s2-codel-rate-step: Rate Steps Down with fq_codel
+# s3-codel-variable-rate: Variable Rates with fq_codel
+# s4-bidir-asym: bi-directional traffic with asymmetric rates
+#
+
+#
+# Global settings
+#
+[Batch::global]
+abstract = yes
+output_path = ${batch_title}/${batch_name}
+output_data_file = ${output_path}/${data_filename}
+socket_stats = yes
+length = 60
+step_size = 0.05
+commands = clear, setup, teardown, process
+repetitions = 1
+pause = 5
+extended_metadata = yes
+debug_error = no
+debug_log = no
+ip_version = 4
+for_net = net_ns
+# standard endpoint hooks, with tcp_metrics, tcpdump and scetrace
+endpoint_hooks = \
+	cli \
+		\"tcp_metrics\; \
+		run_tcpdump right\; \
+		run_scetrace ${output_path}\; \
+		compress ${output_path}\" \
+	srv \
+		\"tcp_metrics\; \
+		run_tcpdump left\"
+# endpoint hooks without pcaps
+#endpoint_hooks = \
+#	cli \
+#		\"tcp_metrics\" \
+#	srv \
+#		\"tcp_metrics\"
+# standard middlebox setup hooks for root qdiscs
+midbox_hooks_root = \
+	mid \
+		\"qdisc bidir root ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# standard middlebox setup hooks for htb child qdiscs
+midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# standard middlebox setup hooks for bi-directional htb child qdiscs
+midbox_hooks_htb_bidir = \
+	mid \
+		\"qdisc right htb ${bw_up} ${qdisc_up_args}\; \
+		qdisc left htb ${bw_down} ${qdisc_down_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# setup hooks (inheriting batches must define midbox_hooks)
+setup_hooks = ${endpoint_hooks} ${midbox_hooks}
+
+#
+# L4S settings
+#
+[Batch::l4s]
+abstract = yes
+arch = l4s
+hosts_phys = ts2
+# default midbox_hooks for L4S use child qdiscs of htb
+midbox_hooks = ${midbox_hooks_htb}
+
+#
+# Common settings
+#
+
+# net args (unused as we use only ns in this batch)
+[Arg::net_phys]
+net = phys
+hosts = ${hosts_phys}
+
+[Arg::net_ns]
+net = ns
+# hosts must match NS_SRV_IP in fl_global.sh
+hosts = 10.9.9.2
+
+# Commands
+[Command::clear]
+exec = ./fl flent_clear ${arch} ${net}
+type = pre
+essential = yes
+
+[Command::setup]
+exec = ./fl flent_setup ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = pre
+essential = yes
+
+[Command::teardown]
+exec = ./fl flent_teardown ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = post
+
+[Command::process]
+exec = ./fl flent_process ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = post
+
+
+#############################################################################
+#
+# Scenario 1- RTT Fairness
+#
+[Batch::s1-rttfair]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s1_rtt_10_10, \
+	s1_rtt_20_10, \
+	s1_rtt_20_20, \
+	s1_rtt_80_80, \
+	s1_rtt_80_20, \
+	s1_rtt_160_10
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}-${rtt2}
+for_bandwidth = s1_10mbit, \
+	s1_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt} rtt2:${rtt2}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+dscp1 = 0x4c
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+dscp2 = 0x8c
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${dscp1},${dscp2}
+ingress_hooks = qdisc bidir ingress rttfair ${rtt_delay} ${rtt_delay2} ${dscp1} ${dscp2}
+s1_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		${ingress_hooks}\"
+s1_midbox_hooks_root = \
+	mid \
+		\"qdisc bidir root ${qdisc_args}\; \
+		${ingress_hooks}\"
+midbox_hooks = ${s1_midbox_hooks_htb}
+length = 180
+
+# S1 L4S
+[Batch::l4s-s1-rttfair]
+inherits = global, l4s, s1-rttfair
+for_vs = s1_prague-vs-prague, \
+	s1_cubic-vs-prague, \
+	s1_prague-vs-cubic, \
+	s1_cubic-vs-cubic
+for_qdisc = s1_dualpi2, s1_pfifo, s1_cnq_codel_af, s1_fq_codel
+
+[Arg::s1_prague-vs-prague]
+vs = prague-vs-prague
+cc_algos = prague,prague
+
+[Arg::s1_cubic-vs-prague]
+vs = cubic-vs-prague
+cc_algos = cubic,prague
+
+[Arg::s1_prague-vs-cubic]
+vs = prague-vs-cubic
+cc_algos = prague,cubic
+
+[Arg::s1_cubic-vs-cubic]
+vs = cubic-vs-cubic
+cc_algos = cubic,cubic
+
+[Arg::s1_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s1_pfifo]
+qdisc = pfifo(${pfifo_limit})
+qdisc_args = pfifo limit ${pfifo_limit}
+
+[Arg::s1_cnq_codel_af]
+qdisc = cnq_codel_af
+qdisc_args = cnq_codel_af bandwidth ${bandwidth}
+midbox_hooks = ${s1_midbox_hooks_root}
+
+[Arg::s1_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+# S1 common
+[Arg::s1_10mbit]
+bandwidth = 10Mbit
+pfifo_limit = 200
+
+[Arg::s1_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s1_100mbit]
+bandwidth = 100Mbit
+pfifo_limit = 1000
+
+[Arg::s1_rtt_10_10]
+rtt = 10ms
+rtt2 = 10ms
+rtt_delay = 5ms
+rtt_delay2 = 5ms
+
+[Arg::s1_rtt_20_10]
+rtt = 20ms
+rtt2 = 10ms
+rtt_delay = 10ms
+rtt_delay2 = 5ms
+
+[Arg::s1_rtt_20_20]
+rtt = 20ms
+rtt2 = 20ms
+rtt_delay = 10ms
+rtt_delay2 = 10ms
+
+[Arg::s1_rtt_80_80]
+rtt = 80ms
+rtt2 = 80ms
+rtt_delay = 40ms
+rtt_delay2 = 40ms
+
+[Arg::s1_rtt_80_20]
+rtt = 80ms
+rtt2 = 20ms
+rtt_delay = 40ms
+rtt_delay2 = 10ms
+
+[Arg::s1_rtt_160_10]
+rtt = 160ms
+rtt2 = 10ms
+rtt_delay = 80ms
+rtt_delay2 = 5ms
+
+
+#############################################################################
+#
+# Scenario 2- Rate reduction step with Codel
+#
+[Batch::s2-codel-rate-step]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s2_lowrtt, s2_lowrtt_bursty, s2_medrtt, s2_medrtt_bursty
+for_bandwidth1 = s2_bandwidth1_25mbit, s2_bandwidth1_10mbit, \
+	s2_bandwidth1_5mbit, s2_bandwidth1_1mbit
+bandwidth = 50Mbit
+filename_extra = ${net}-${burstname}-${cc}-${qdisc}-${bandwidth}-${bandwidth1}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} bandwidth1:${bandwidth1} rtt:${rtt} bursty:${burstiness}
+test_parameters = cc_algo=${cc};
+
+# S2 L4S
+[Batch::l4s-s2-codel-rate-step]
+inherits = global, l4s, s2-codel-rate-step
+for_cc = s2_prague, s2_cubic
+for_qdisc = s2_fq_codel, s2_dualpi2
+midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir after ${delay1} htb ${bandwidth1}\; \
+		qdisc bidir ingress root-tree ${netem_args}\"
+
+# S2 args
+[Arg::s2_bandwidth1_25mbit]
+bandwidth1 = 25mbit
+
+[Arg::s2_bandwidth1_10mbit]
+bandwidth1 = 10mbit
+
+[Arg::s2_bandwidth1_5mbit]
+bandwidth1 = 5mbit
+
+[Arg::s2_bandwidth1_1mbit]
+bandwidth1 = 1mbit
+
+[Arg::s2_prague]
+cc = prague
+
+[Arg::s2_cubic]
+cc = cubic
+
+[Arg::s2_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+[Arg::s2_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s2_lowrtt]
+rtt = 20ms
+length = 60
+delay1 = 30
+netem_args = \\\"netem delay 10ms limit 100000\\\"
+burstname = clean
+burstiness = no
+
+[Arg::s2_lowrtt_bursty]
+inherits = s2_lowrtt
+netem_args = \\\"netem delay 10ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 16 limit 10000\\\"
+burstname = bursty
+burstiness = yes
+
+[Arg::s2_medrtt]
+rtt = 80ms
+length = 60
+delay1 = 30
+netem_args = \\\"netem delay 40ms limit 100000\\\"
+burstname = clean
+burstiness = no
+
+[Arg::s2_medrtt_bursty]
+inherits = s2_medrtt
+netem_args = \\\"netem delay 40ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 16 limit 10000\\\"
+burstname = bursty
+burstiness = yes
+
+
+#############################################################################
+#
+# Scenario 3- Variable rates with Codel
+#
+[Batch::s3-codel-variable-rate]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s3_lowrtt, s3_lowrtt_bursty, s3_medrtt, s3_medrtt_bursty
+bandwidth = 100Mbit
+filename_extra = ${net}-${burstname}-${cc}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt} bursty:${burstiness}
+test_parameters = cc_algo=${cc};
+
+# S3 L4S
+[Batch::l4s-s3-codel-variable-rate]
+inherits = global, l4s, s3-codel-variable-rate
+for_cc = s3_prague, s3_cubic
+for_qdisc = s3_fq_codel, s3_dualpi2
+delay1 = 25
+bandwidth1 = 50Mbit
+delay2 = 30
+bandwidth2 = 10Mbit
+delay3 = 35
+bandwidth3 = 90Mbit
+delay4 = 50
+bandwidth4 = 5Mbit
+midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir after ${delay1} htb ${bandwidth1}\; \
+		qdisc bidir after ${delay2} htb ${bandwidth2}\; \
+		qdisc bidir after ${delay3} htb ${bandwidth3}\; \
+		qdisc bidir after ${delay4} htb ${bandwidth4}\; \
+		qdisc bidir ingress root-tree ${netem_args}\"
+
+# S3 args
+[Arg::s3_prague]
+cc = prague
+fq_codel_ecn = ecn
+
+[Arg::s3_cubic]
+cc = cubic
+fq_codel_ecn = noecn
+
+[Arg::s3_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel ${fq_codel_ecn}
+
+[Arg::s3_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s3_lowrtt]
+rtt = 20ms
+length = 60
+netem_args = \\\"netem delay 10ms limit 100000\\\"
+burstiness = no
+burstname = not_bursty
+
+[Arg::s3_lowrtt_bursty]
+inherits = s3_lowrtt
+netem_args = \\\"netem delay 10ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 32 limit 10000\\\"
+burstiness = yes
+burstname = bursty
+
+[Arg::s3_medrtt]
+rtt = 80ms
+length = 60
+netem_args = \\\"netem delay 40ms limit 100000\\\"
+burstiness = no
+burstname = not_bursty
+
+[Arg::s3_medrtt_bursty]
+inherits = s3_medrtt
+netem_args = \\\"netem delay 40ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 32 limit 10000\\\"
+burstiness = yes
+burstname = bursty
+
+#############################################################################
+#
+# Scenario 4- Bi-directional asymmetric rates
+#
+[Batch::s4-bidir-asym]
+abstract = yes
+test_name = rrul_be
+for_bandwidth = s4_bw_1Mbit_10Mbit, s4_bw_1Mbit_20Mbit, s4_bw_5Mbit_100Mbit
+for_rtts = s4_lowrtt, s4_medrtt
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bw_up}/${bw_down} rtt:${rtt} duration:${length}s
+filename_extra = ${net}-${cc}-${qdisc}-${bw_up}-${bw_down}-${rtt}
+endpoint_hooks = ${endpoint_hooks_no_pcap}
+test_parameters = tcp_cong_control=${cc};
+
+# S4 L4S
+[Batch::l4s-s4-bidir-asym]
+inherits = global, l4s, s4-bidir-asym
+for_cc = s4_cubic, s4_prague
+for_qdisc = s4_fq_codel, s4_dualpi2, s4_pfifo
+midbox_hooks = ${midbox_hooks_htb_bidir}
+
+[Arg::s4_dualpi2]
+qdisc = dualpi2
+qdisc_up_args = dualpi2
+qdisc_down_args = dualpi2
+
+[Arg::s4_prague]
+cc = prague
+
+# S4 common
+[Arg::s4_cubic]
+cc = cubic
+
+[Arg::s4_bw_1Mbit_10Mbit]
+bw_up = 1Mbit
+bw_down = 10Mbit
+pfifo_up_limit = 20
+pfifo_down_limit = 200
+
+[Arg::s4_bw_1Mbit_20Mbit]
+bw_up = 1Mbit
+bw_down = 20Mbit
+pfifo_up_limit = 20
+pfifo_down_limit = 400
+
+[Arg::s4_bw_5Mbit_100Mbit]
+bw_up = 5Mbit
+bw_down = 100Mbit
+pfifo_up_limit = 100
+pfifo_down_limit = 1000
+
+[Arg::s4_fq_codel]
+qdisc = fq_codel
+qdisc_up_args = fq_codel
+qdisc_down_args = fq_codel
+
+[Arg::s4_pfifo]
+qdisc = pfifo(${pfifo_up_limit},${pfifo_down_limit})
+qdisc_up_args = pfifo limit ${pfifo_up_limit}
+qdisc_down_args = pfifo limit ${pfifo_down_limit}
+midbox_hooks = ${midbox_hooks_htb_bidir}
+
+[Arg::s4_lowrtt]
+rtt = 20ms
+length = 60
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s4_medrtt]
+rtt = 80ms
+length = 60
+netem_args = netem delay 40ms limit 1000000
