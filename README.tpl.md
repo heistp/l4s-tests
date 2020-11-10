@@ -91,13 +91,9 @@ In the following results, the links are named as follows:
 
 ### Scenario 1: RTT Fairness
 
-TODO fix table
-
 $(cli_gen_table s1)
 
 ### Scenario 2: Rate Steps Down with fq_codel
-
-TODO fix table
 
 $(cli_gen_table s2)
 

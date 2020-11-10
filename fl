@@ -1669,6 +1669,35 @@ cli_gen_table() {
 		done
 	}
 
+	# scenario 2
+	s2_emit_table() {
+		local sname="s2-codel-rate-step"
+		emit_header "Burstiness | Bandwidth1 | RTT | qdisc | CC | [L4S]($(burl l4s)/)"
+		local bw1 rtt qdisc cc burstiness
+		for burstiness in clean bursty; do
+			for bw1 in 25 10 5 1; do
+				for rtt in 20 80; do
+					for qdisc in dualpi2 fq_codel; do
+						for cc in cubic prague; do
+						local s2_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$burstiness-$cc-$qdisc-50Mbit-${bw1}mbit-${rtt}ms"
+						local s2_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$burstiness-$cc-$qdisc-50Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+		
+						verify_url "$s2_l4s_url.log"
+						verify_url "$s2_l4s_plot_url"
+		
+						emit_row $burstiness \
+							${bw1}Mbit \
+							$rtt \
+							$qdisc \
+							$cc \
+							"$(links l4s)"
+						done
+					done
+				done
+			done
+		done
+	}
+
 #	# scenario 2
 #	s2_emit_table() {
 #		local sname="s2-twoflow"
