@@ -1698,6 +1698,32 @@ cli_gen_table() {
 		done
 	}
 
+	# scenario 3
+	s3_emit_table() {
+		local sname="s3-codel-variable-rate"
+		emit_header "Burstiness | RTT | qdisc | CC | [L4S]($(burl l4s)/)"
+		local bw1 rtt qdisc cc burstiness
+		for burstiness in not_bursty bursty; do
+			for rtt in 20 80; do
+				for qdisc in dualpi2 fq_codel; do
+					for cc in cubic prague; do
+					local s3_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$burstiness-$cc-$qdisc-100Mbit-${rtt}ms"
+					local s3_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$burstiness-$cc-$qdisc-100Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+	
+					verify_url "$s3_l4s_url.log"
+					verify_url "$s3_l4s_plot_url"
+	
+					emit_row $burstiness \
+						$rtt \
+						$qdisc \
+						$cc \
+						"$(links l4s)"
+					done
+				done
+			done
+		done
+	}
+
 #	# scenario 2
 #	s2_emit_table() {
 #		local sname="s2-twoflow"

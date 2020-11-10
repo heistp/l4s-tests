@@ -99,8 +99,6 @@ $(cli_gen_table s2)
 
 ### Scenario 3: Variable Rates with fq_codel
 
-TODO fix table
-
 $(cli_gen_table s3)
 
 ## Appendix
