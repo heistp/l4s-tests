@@ -1637,185 +1637,194 @@ cli_gen_table() {
 
 	# scenario 1
 	s1_emit_table() {
-		local sname="s1-oneflow"
-		emit_header "Bandwidth | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
-		local bw rtt
-		for bw in 5 50 250; do
-			for rtt in 20 80 160; do
-				local s1_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms"
-				local s1_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-				local s1_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms"
-				local s1_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-
-				verify_url "$s1_sce_url.log"
-				verify_url "$s1_sce_plot_url"
-				verify_url "$s1_l4s_url.log"
-				verify_url "$s1_l4s_plot_url"
-
-				emit_row ${bw}Mbit \
-					${rtt}ms \
-					"$(links sce)" \
-					"$(links l4s)"
+		local sname="s1-rttfair"
+		emit_header "Bandwidth | RTTs | qdisc | vs | [L4S]($(burl l4s)/)"
+		local bw rtt qdisc vs
+		for bw in 50 10; do
+			for rtts in 10ms-10ms 20ms-20ms 80ms-80ms 20ms-10ms 80ms-20ms 160ms-10ms; do
+				for qdisc in dualpi2 pfifo fq_codel cnq_codel_af; do
+					for vs in cubic-vs-cubic prague-vs-prague cubic-vs-prague prague-vs-cubic; do
+						local qdisc_fname=$qdisc
+						if [[ $qdisc == "pfifo" ]]; then
+							if [[ $bw == 50 ]]; then
+								qdisc_fname="${qdisc}_1000_"
+							elif [[ $bw == 10 ]]; then
+								qdisc_fname="${qdisc}_200_"
+							fi
+						fi
+						local s1_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$vs-$qdisc_fname-${bw}Mbit-$rtts"
+						local s1_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$vs-$qdisc_fname-${bw}Mbit-${rtts}_tcp_delivery_with_rtt.svg"
+		
+						verify_url "$s1_l4s_url.log"
+						verify_url "$s1_l4s_plot_url"
+		
+						emit_row ${bw}Mbit \
+							$rtts \
+							$qdisc \
+							$vs \
+							"$(links l4s)"
+					done
+				done
 			done
 		done
 	}
 
-	# scenario 2
-	s2_emit_table() {
-		local sname="s2-twoflow"
-		emit_header "RTT | qdisc | [SCE]($(burl sce)/)"
-		local rtt qdisc
-		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) lfq_cobalt \
-			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
-			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\) \
-			twin_codel_af; do
-			for rtt in 20 80 160; do
-				local qdiscf=${qdisc//[\(\)\/]/_}
-				local s2_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms"
-				local s2_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
-
-				verify_url "$s2_sce_url.log"
-				verify_url "$s2_sce_plot_url"
-
-				emit_row ${rtt}ms \
-					${qdisc} \
-					"$(links sce)"
-			done
-		done
-
-		echo
-
-		emit_header "RTT | qdisc | [L4S]($(burl l4s)/)"
-		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) dualpi2 \
-			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
-			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\); do
-			for rtt in 20 80 160; do
-				local qdiscf=${qdisc//[\(\)\/]/_}
-				local s2_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms"
-				local s2_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
-	
-				verify_url "$s2_l4s_url.log"
-				verify_url "$s2_l4s_plot_url"
-	
-				emit_row ${rtt}ms \
-					${qdisc} \
-					"$(links l4s)"
-			done
-		done
-	}
-
-	# scenario 3
-	s3_emit_table() {
-		local sname="s3-bottleneck-shift"
-		emit_header "RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
-		local bw rtt
-		bw=50
-		for rtt in 20 80; do
-			local s3_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms"
-			local s3_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-			local s3_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms"
-			local s3_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-
-			verify_url "$s3_sce_url.log"
-			verify_url "$s3_sce_plot_url"
-			verify_url "$s3_l4s_url.log"
-			verify_url "$s3_l4s_plot_url"
-
-			emit_row \
-				${rtt}ms \
-				"$(links sce)" \
-				"$(links l4s)"
-		done
-	}
+#	# scenario 2
+#	s2_emit_table() {
+#		local sname="s2-twoflow"
+#		emit_header "RTT | qdisc | [SCE]($(burl sce)/)"
+#		local rtt qdisc
+#		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) lfq_cobalt \
+#			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
+#			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\) \
+#			twin_codel_af; do
+#			for rtt in 20 80 160; do
+#				local qdiscf=${qdisc//[\(\)\/]/_}
+#				local s2_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms"
+#				local s2_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#				verify_url "$s2_sce_url.log"
+#				verify_url "$s2_sce_plot_url"
+#
+#				emit_row ${rtt}ms \
+#					${qdisc} \
+#					"$(links sce)"
+#			done
+#		done
+#
+#		echo
+#
+#		emit_header "RTT | qdisc | [L4S]($(burl l4s)/)"
+#		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) dualpi2 \
+#			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
+#			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\); do
+#			for rtt in 20 80 160; do
+#				local qdiscf=${qdisc//[\(\)\/]/_}
+#				local s2_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms"
+#				local s2_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s2_l4s_url.log"
+#				verify_url "$s2_l4s_plot_url"
+#	
+#				emit_row ${rtt}ms \
+#					${qdisc} \
+#					"$(links l4s)"
+#			done
+#		done
+#	}
+#
+#	# scenario 3
+#	s3_emit_table() {
+#		local sname="s3-bottleneck-shift"
+#		emit_header "RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local bw rtt
+#		bw=50
+#		for rtt in 20 80; do
+#			local s3_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms"
+#			local s3_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#			local s3_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms"
+#			local s3_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#			verify_url "$s3_sce_url.log"
+#			verify_url "$s3_sce_plot_url"
+#			verify_url "$s3_l4s_url.log"
+#			verify_url "$s3_l4s_plot_url"
+#
+#			emit_row \
+#				${rtt}ms \
+#				"$(links sce)" \
+#				"$(links l4s)"
+#		done
+#	}
 
 	# scenario 4
-	s4_emit_table() {
-		local sname="s4-capacity-reduction"
-		emit_header "Bandwidth1 | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
-		local bw bw1 rtt
-		bw=50
-		for bw1 in 40 5; do
-			for rtt in 20 80; do
-				local s4_sce_url="$(burl sce)/batch-sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms"
-				local s4_sce_plot_url="$(burl sce)/sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-				local s4_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms"
-				local s4_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-	
-				verify_url "$s4_sce_url.log"
-				verify_url "$s4_sce_plot_url"
-				verify_url "$s4_l4s_url.log"
-				verify_url "$s4_l4s_plot_url"
-	
-				emit_row ${bw1}Mbit \
-					${rtt}ms \
-					"$(links sce)" \
-					"$(links l4s)"
-			done
-		done
-	}
-
-	# scenario 5
-	s5_emit_table() {
-		local sname="s5-burstiness"
-		emit_header "qdisc | RTT | [SCE]($(burl sce)/)"
-		local bw qdisc rtt
-		bw=50
-		for qdisc in cake twin_codel_af; do
-			for rtt in 20 80; do
-				local s5_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms"
-				local s5_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-	
-				verify_url "$s5_sce_url.log"
-				verify_url "$s5_sce_plot_url"
-	
-				emit_row ${qdisc} \
-					${rtt}ms \
-					"$(links sce)"
-			done
-		done
-
-		echo
-
-		emit_header "qdisc | RTT | [L4S]($(burl l4s)/)"
-		qdisc=dualpi2
-		for rtt in 20 80; do
-			local s5_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms"
-			local s5_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
-
-			verify_url "$s5_l4s_url.log"
-			verify_url "$s5_l4s_plot_url"
-
-			emit_row ${qdisc} \
-				${rtt}ms \
-				"$(links l4s)"
-		done
-	}
-
-	# scenario 6
-	s6_emit_table() {
-		local sname="s6-jitter"
-		emit_header "netem-jitter-params | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
-		local rtt bw njp njpf
-		rtt=80
-		bw=50
-		for njp in "2ms 1ms 10%" "4ms 2ms 10%" "10ms 5ms 10%"; do
-				local njpf=${njp//[ %]/_}
-				local s6_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
-				local s6_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
-				local s6_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
-				local s6_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
-	
-				verify_url "$s6_sce_url.log"
-				verify_url "$s6_sce_plot_url"
-				verify_url "$s6_l4s_url.log"
-				verify_url "$s6_l4s_plot_url"
-	
-				emit_row "${njp}" \
-					${rtt}ms \
-					"$(links sce)" \
-					"$(links l4s)"
-		done
-	}
+#	s4_emit_table() {
+#		local sname="s4-capacity-reduction"
+#		emit_header "Bandwidth1 | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local bw bw1 rtt
+#		bw=50
+#		for bw1 in 40 5; do
+#			for rtt in 20 80; do
+#				local s4_sce_url="$(burl sce)/batch-sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms"
+#				local s4_sce_plot_url="$(burl sce)/sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#				local s4_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms"
+#				local s4_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s4_sce_url.log"
+#				verify_url "$s4_sce_plot_url"
+#				verify_url "$s4_l4s_url.log"
+#				verify_url "$s4_l4s_plot_url"
+#	
+#				emit_row ${bw1}Mbit \
+#					${rtt}ms \
+#					"$(links sce)" \
+#					"$(links l4s)"
+#			done
+#		done
+#	}
+#
+#	# scenario 5
+#	s5_emit_table() {
+#		local sname="s5-burstiness"
+#		emit_header "qdisc | RTT | [SCE]($(burl sce)/)"
+#		local bw qdisc rtt
+#		bw=50
+#		for qdisc in cake twin_codel_af; do
+#			for rtt in 20 80; do
+#				local s5_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms"
+#				local s5_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s5_sce_url.log"
+#				verify_url "$s5_sce_plot_url"
+#	
+#				emit_row ${qdisc} \
+#					${rtt}ms \
+#					"$(links sce)"
+#			done
+#		done
+#
+#		echo
+#
+#		emit_header "qdisc | RTT | [L4S]($(burl l4s)/)"
+#		qdisc=dualpi2
+#		for rtt in 20 80; do
+#			local s5_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms"
+#			local s5_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#			verify_url "$s5_l4s_url.log"
+#			verify_url "$s5_l4s_plot_url"
+#
+#			emit_row ${qdisc} \
+#				${rtt}ms \
+#				"$(links l4s)"
+#		done
+#	}
+#
+#	# scenario 6
+#	s6_emit_table() {
+#		local sname="s6-jitter"
+#		emit_header "netem-jitter-params | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local rtt bw njp njpf
+#		rtt=80
+#		bw=50
+#		for njp in "2ms 1ms 10%" "4ms 2ms 10%" "10ms 5ms 10%"; do
+#				local njpf=${njp//[ %]/_}
+#				local s6_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
+#				local s6_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
+#				local s6_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
+#				local s6_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s6_sce_url.log"
+#				verify_url "$s6_sce_plot_url"
+#				verify_url "$s6_l4s_url.log"
+#				verify_url "$s6_l4s_plot_url"
+#	
+#				emit_row "${njp}" \
+#					${rtt}ms \
+#					"$(links sce)" \
+#					"$(links l4s)"
+#		done
+#	}
 
 	# select function to run from scenario
 	local sfunc="${scenario}_emit_table"
