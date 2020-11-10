@@ -46,15 +46,21 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ## Key Findings
 
-1. The dualpi2 qdisc tends to introduce a network bias for L4S flows over
+1. The
+   [dualpi2](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-aqm-dualq-coupled/)
+   qdisc introduces a [network bias](#network-bias) for L4S flows over
    existing flows.
-2. TCP Prague and dualpi2 exhibit a greater level of RTT unfairness than the
-   commonly used CUBIC and pfifo.
-3. TCP Prague can experience broad intra-flow latency spikes at RFC 3168
+2. TCP Prague and dualpi2 exhibit a greater level of
+   [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
+3. Due to the incompatible redefinition of CE defined in
+   [l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/),
+   L4S transports can experience broad
+   [intra-flow latency-spikes](#intra-flow-latency-spikes) at RFC 3168
    bottlenecks, particularly upon rate reductions in the widely deployed
    fq_codel.
-4. The marking scheme in the dualpi2 qdisc is not burst tolerant, causing
-   under-utilization for traffic with bursty arrivals.
+4. The marking scheme in the dualpi2 qdisc is
+   [burst intolerant](#burst-intolerance), causing under-utilization for
+   traffic with bursty arrivals.
 
 ## Elaboration on Key Findings
 
@@ -72,6 +78,8 @@ TODO
 ### Intra-flow Latency Spikes
 
 TODO
+
+### Burst Intolerance
 
 ## Full Results
 
