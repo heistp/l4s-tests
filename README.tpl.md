@@ -15,8 +15,9 @@ Jonathan Morton
    2. [Scenario 2: Codel Rate Step](#scenario-2-codel-rate-step)
    3. [Scenario 3: Codel Variable Rate](#scenario-3-codel-variable-rate)
 5. [Appendix](#appendix)
-   1. [Background](#background)
-   2. [Test Setup](#test-setup)
+   1. [Scenario 1 Fairness Table](#scenario-1-fairness-table)
+   2. [Background](#background)
+   3. [Test Setup](#test-setup)
 
 ## Introduction
 
@@ -102,6 +103,12 @@ $(cli_gen_table s2)
 $(cli_gen_table s3)
 
 ## Appendix
+
+### Scenario 1 Fairness Table
+
+Delivery<sub>SS</sub> = Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
+
+$(<s1_table.md)
 
 ### Background
 
