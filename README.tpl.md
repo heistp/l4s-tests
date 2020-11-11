@@ -106,7 +106,7 @@ $(cli_gen_table s3)
 
 ### Scenario 1 Fairness Table
 
-Delivery<sub>SS</sub> = Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
+**D<sub>SS</sub>** Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
 
 $(<s1_table.md)
 

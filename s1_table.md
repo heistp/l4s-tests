@@ -1,5 +1,5 @@
-| Bandwidth | qdisc | CC 1 (RTT) | Delivery<sub>SS</sub> 1 (Mbit) | CC 2 (RTT) | Delivery<sub>SS</sub> 2 (Mbit) | Jain's |
-| --------- | ----- | ---------- | ------------------------------ | ---------- | ------------------------------ | ------ |
+| Bandwidth | qdisc | CC 1 (RTT) | D<sub>SS</sub> 1 | CC 2 (RTT) | D<sub>SS</sub> 2 | Jain's |
+| --------- | ----- | ---------- | ---------------- | ---------- | -----------------| ------ |
 | 50Mbit | cnq_codel_af | prague(10ms) | 23.87 | cubic(10ms) | 23.34 | 1.000 |
 | 50Mbit | cnq_codel_af | prague(10ms) | 23.64 | prague(10ms) | 23.64 | 1.000 |
 | 50Mbit | cnq_codel_af | cubic(10ms) | 23.34 | prague(10ms) | 23.84 | 1.000 |
