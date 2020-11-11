@@ -383,8 +383,8 @@ bursty | 80 | fq_codel | prague | [plot](http://sce.dnsmgr.net/_archive/l4s-2020
 
 **D<sub>SS</sub>** Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
 
-| Bandwidth | qdisc | CC 1 (RTT) | D<sub>SS</sub> 1 | CC 2 (RTT) | D<sub>SS</sub> 2 | Jain's |
-| --------- | ----- | ---------- | ---------------- | ---------- | -----------------| ------ |
+| Rate | qdisc | CC1 (RTT) | D<sub>SS</sub>1 | CC2 (RTT) | D<sub>SS</sub>2 | Jain's |
+| ---- | ----- | --------- | --------------- | --------- | ----------------| ------ |
 | 50Mbit | cnq_codel_af | prague(10ms) | 23.87 | cubic(10ms) | 23.34 | 1.000 |
 | 50Mbit | cnq_codel_af | prague(10ms) | 23.64 | prague(10ms) | 23.64 | 1.000 |
 | 50Mbit | cnq_codel_af | cubic(10ms) | 23.34 | prague(10ms) | 23.84 | 1.000 |

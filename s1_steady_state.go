@@ -211,8 +211,8 @@ func parseRTT(rttstr string) (rtt int) {
 }
 
 func emitHeader() {
-	fmt.Println("| Bandwidth | qdisc | CC 1 (RTT) | D<sub>SS</sub> 1 | CC 2 (RTT) | D<sub>SS</sub> 2 | Jain's |")
-	fmt.Println("| --------- | ----- | ---------- | ---------------- | ---------- | -----------------| ------ |")
+	fmt.Println("| Rate | qdisc | CC1 (RTT) | D<sub>SS</sub>1 | CC2 (RTT) | D<sub>SS</sub>2 | Jain's |")
+	fmt.Println("| ---- | ----- | --------- | --------------- | --------- | ----------------| ------ |")
 }
 
 func emitRow(r runInfo) {
