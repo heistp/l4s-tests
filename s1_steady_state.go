@@ -268,21 +268,6 @@ func main() {
 		runInfos = append(runInfos, runInfo)
 	}
 
-	/*
-		sort.Slice(runInfos, func(i, j int) bool {
-			if runInfos[i].bandwidth > runInfos[j].bandwidth {
-				return true
-			}
-			if runInfos[i].qdisc < runInfos[j].qdisc {
-				return true
-			}
-			if parseRTT(runInfos[i].rtt1) < parseRTT(runInfos[j].rtt1) {
-				return true
-			}
-			return parseRTT(runInfos[i].rtt2) < parseRTT(runInfos[j].rtt2)
-		})
-	*/
-
 	sort.Sort(sortRunInfo(runInfos))
 
 	for _, ri := range runInfos {
