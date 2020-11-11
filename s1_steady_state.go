@@ -13,6 +13,13 @@ import (
 	"strings"
 )
 
+var qdiscs = [...]string{"dualpi2",
+	"pfifo(1000)",
+	"pfifo(200)",
+	"cnq_codel_af",
+	"fq_codel",
+}
+
 type Flent struct {
 	Metadata  Metadata  `json:"metadata"`
 	RawValues RawValues `json:"raw_values"`
@@ -64,6 +71,15 @@ type runInfo struct {
 	jains     float64
 }
 
+func qdiscIndex(qdisc string) int {
+	for i, q := range qdiscs {
+		if q == qdisc {
+			return i
+		}
+	}
+	return len(qdiscs)
+}
+
 type sortRunInfo []runInfo
 
 func (s sortRunInfo) Len() int {
@@ -81,10 +97,10 @@ func (s sortRunInfo) Less(i, j int) bool {
 	if s[i].bandwidth < s[j].bandwidth {
 		return false
 	}
-	if s[i].qdisc < s[j].qdisc {
+	if qdiscIndex(s[i].qdisc) < qdiscIndex(s[j].qdisc) {
 		return true
 	}
-	if s[i].qdisc > s[j].qdisc {
+	if qdiscIndex(s[i].qdisc) > qdiscIndex(s[j].qdisc) {
 		return false
 	}
 	if parseRTT(s[i].rtt1) < parseRTT(s[j].rtt1) {
