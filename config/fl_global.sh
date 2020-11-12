@@ -118,7 +118,7 @@ COMPRESS=xz
 BROWSER= # set to browser command, if not Linux or Mac
 
 # results directories
-RESULTS_URL="http://sce.dnsmgr.net/_archive"
+RESULTS_URL="http://sce.dnsmgr.net/results"
 RESULTS_DIR="l4s-2020-11-11T120000-final"
 
 # harness config
