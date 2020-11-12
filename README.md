@@ -72,7 +72,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 *Figure 1*
 
 Measurements show that DualPI2 consistently gives TCP Prague flows a throughput advantage over conventional CUBIC flows, 
-where both flows run over the same path RTT.  In the above plot, we compare the typical status quo in the form of a 
+where both flows run over the same path RTT.  In *Figure 1* above, we compare the typical status quo in the form of a 
 250ms-sized dumb FIFO (middle) to DualPI2 (left) and an Approximate Fairness AQM (right) which actively considers queue 
 occupancy of each flow.  The baseline path RTT for both flows is 20ms, which is in the range expected for CDN to consumer 
 traffic.  Both flows start simultaneously and run for 3 minutes, with the throughput figures being taken from the final 
@@ -92,8 +92,8 @@ effects, both explicit and accidental, in DualPI's design are giving TCP Prague 
 
 The CodelAF results are presented as an example of what can easily be achieved by actively equalising queue occupancy across 
 flows through differential AQM activity, which compensates for differing congestion control algorithms and path 
-characteristics.  CodelAF was initially developed as part of SCE, but the version used here is purely RFC-3168 compliant.  
-On the right side of the chart, you can see that CUBIC and TCP Prague are given very nearly equal access to the link, with 
+characteristics.  CodelAF was initially developed as part of SCE, but the version used here is purely RFC-3168 compliant.
+On the right side of *Figure 2*, you can see that CUBIC and TCP Prague are given very nearly equal access to the link, with 
 considerably less queuing than in the dumb FIFO.
 
 ![L4S Network Bias 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/rttfair_cc_qdisc_80ms_80ms.svg)
@@ -108,7 +108,7 @@ introduce a "fast lane" is in evidence here.
 
 ### RTT Unfairness
 
-One of the socalled "Prague Requirements" adopted by L4S is to reduce the dependence on path RTT for flow throughput.  
+One of the socalled "Prague Requirements" adopted by L4S is to reduce the dependence on path RTT for flow throughput.
 Conventional single-queue AQM tends to result in a consistent average cwnd across flows sharing the bottleneck, and since 
 BDP == cwnd * MTU == throughput * RTT, the throughput of each flow is inversely proportional to the effective RTT 
 experienced by that flow, which in turn is the baseline path RTT plus the queue delay.
