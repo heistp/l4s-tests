@@ -68,17 +68,76 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ### Network Bias
 
-![CUBIC(20ms) vs Prague(20ms) through DualPI2](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/l4s-s1-rttfair-ns-cubic-vs-prague-dualpi2-10Mbit-20ms-20ms_tcp_delivery_with_rtt.svg)  
-*Figure 1*  
+![L4S Network Bias 20ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/rttfair_cc_qdisc_20ms_20ms.svg)
+*Figure 1*
 
-TODO
+Measurements show that DualPI2 consistently gives TCP Prague flows a throughput advantage over conventional CUBIC flows, 
+where both flows run over the same path RTT.  In the above plot, we compare the typical status quo in the form of a 
+250ms-sized dumb FIFO (middle) to DualPI2 (left) and an Approximate Fairness AQM (right) which actively considers queue 
+occupancy of each flow.  The baseline path RTT for both flows is 20ms, which is in the range expected for CDN to consumer 
+traffic.  Both flows start simultaneously and run for 3 minutes, with the throughput figures being taken from the final 
+minute of the run as an approximation of reaching steady-state.
+
+It is well-known that CUBIC outperforms NewReno on high-BDP paths where the polynomial curve grows faster than the linear 
+one; the 250ms queue depth of the dumb FIFO and the relatively high throughput of the link puts the middle chart firmly in 
+that regime.  Because no AQM is present at the bottleneck, TCP Prague behaves approximately like NewReno and, as expected, 
+is outperformed by CUBIC.  It is difficult, incidentally, to see where L4S' "scalable throughput" claim is justified here, 
+as CUBIC clearly scales up in throughput better in today's typical Internet environment.
+
+L4S assumes that an L4S-aware AQM is present at the bottleneck.  The left-hand chart shows what happens when DualPI2, which 
+is claimed to implement L4S in the network, is indeed present there.  In a stark reversal from the dumb FIFO scenario, TCP 
+Prague is seen to have a large throughput advantage over CUBIC, in more than a 2:1 ratio.  This cannot be explained by 
+CUBIC's sawtooth behaviour, as that would leave much less than 50% of available capacity unused.  We believe that several 
+effects, both explicit and accidental, in DualPI's design are giving TCP Prague an unfair advantage in throughput.
+
+The CodelAF results are presented as an example of what can easily be achieved by actively equalising queue occupancy across 
+flows through differential AQM activity, which compensates for differing congestion control algorithms and path 
+characteristics.  CodelAF was initially developed as part of SCE, but the version used here is purely RFC-3168 compliant.  
+On the right side of the chart, you can see that CUBIC and TCP Prague are given very nearly equal access to the link, with 
+considerably less queuing than in the dumb FIFO.
+
+![L4S Network Bias 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/rttfair_cc_qdisc_80ms_80ms.svg)
+*Figure 2*
+
+These results also hold on 10ms and 80ms paths, with only minor variations; most notably, at 80ms CUBIC loses a bit of 
+throughput in CodelAF due to its sawtooth behaviour, but is still not disadvantaged to the extent that DualPI2 imposes.  We 
+also see very similar results to CodelAF when the current state-of-the-art fq_codel and CAKE qdiscs are used.  Hence we show 
+that DualPI2 represents a regression in behaviour from both the currently typical deployment and the state of the art, with 
+respect to throughput fairness on a common RTT.  We could even hypothesise from this data that a deliberate attempt to 
+introduce a "fast lane" is in evidence here.
 
 ### RTT Unfairness
 
-TODO
+One of the socalled "Prague Requirements" adopted by L4S is to reduce the dependence on path RTT for flow throughput.  
+Conventional single-queue AQM tends to result in a consistent average cwnd across flows sharing the bottleneck, and since 
+BDP == cwnd * MTU == throughput * RTT, the throughput of each flow is inversely proportional to the effective RTT 
+experienced by that flow, which in turn is the baseline path RTT plus the queue delay.
 
-![L4S Network Bias](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/l4s_network_bias.svg)
-*Figure 2*
+However, DualPI2 is designed to perpetuate this equalising of average cwnd, not only between flows in the same queue, but 
+between the two classes of traffic it manages (L4S and conventional).  Further, the effective RTT differs between the two 
+classes of traffic due to the different AQM target in each, and the queue depth in the L4S class is limited to a very small 
+value.  The result is that the ratio of effective RTTs is not diluted by queue depth, as it would be in a deeper queue, and 
+also not compensated for by differential per-flow AQM action, as it would be in FQ or AF AQMs which are already deployed to
+some extent.
+
+![L4S RTT Bias 10/160ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/rttfair_cc_qdisc_10ms_160ms.svg)
+*Figure 3*
+
+This can be clearly seen in the above chart, in which a comparatively extreme ratio of path RTTs has been introduced between 
+two flows to illustrate the effect.  In the middle, the 250ms dumb FIFO is clearly seen to dilute the effect (the effective 
+RTTs are 260ms and 410ms respectively) to the point where, except for two CUBIC flows competing against each other, other 
+effects dominate the result in terms of steady-state throughput.  On the right, the AF AQM clearly reduces the RTT bias 
+effect to almost parity, with the exception of the pair of CUBIC flows which are still slightly improved over the dumb FIFO.  
+
+But on the left, when the bottleneck is managed by DualPI2, the shorter-RTT flow has a big throughput advantage in every 
+case - even overcoming the throughput advantage that DualPI2 normally gives to TCP Prague, as shown previously.  Indeed the 
+only case where DualPI2 shows better elimination of RTT bias than the dumb FIFO is entirely due to this bias in favour of 
+TCP Prague.  Additionally, in the pure-L4S scenario in which both flows are TCP Prague, the ratio of throughput actually 
+exceeds the nominal 16:1 ratio of path RTTs.
+
+We conclude that DualPI2 does not represent "running code" supporting the L4S specification in respect of the "reduce RTT 
+dependence" element of the Prague Requirements.  Observing that the IETF standardisation process is predicated upon "rough 
+consensus and running code", we strongly suggest that this deficiency be remedied before a WGLC process is considered.
 
 ### Intra-flow Latency Spikes
 
