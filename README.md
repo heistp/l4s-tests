@@ -28,8 +28,8 @@ Jonathan Morton
 
 The Transport Area Working Group
 ([TSVWG](https://datatracker.ietf.org/group/tsvwg/about/)) will undergo a WGLC
-(working group last call) for [L4S](https://riteproject.eu/dctth/). L4S proposes
-to use the available ECT(1) codepoint for two purposes:
+(working group last call) for [L4S](https://riteproject.eu/dctth/), which
+proposes to use the available ECT(1) codepoint for two purposes:
 
 * to redefine the existing CE codepoint as a high-fidelity congestion control
   signal, which is incompatible with the present definition of CE in
