@@ -210,6 +210,10 @@ for over **30 seconds**. This behavior is something we need to be aware of
 before introducing an ambiguous definition of the CE signal in the presence of
 [fq_codel deployments](#deployments-of-fq_codel).
 
+See the [Scenario 3](#scenario-3-codel-variable-rate) results, in
+particular for TCP Prague through fq_codel, to look at what happens when
+rates vary several times over the course of a flow.
+
 ### Burst Intolerance
 
 The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
