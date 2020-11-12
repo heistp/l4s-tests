@@ -108,7 +108,7 @@ introduce a "fast lane" is in evidence here.
 
 ### RTT Unfairness
 
-One of the socalled "Prague Requirements" adopted by L4S is to reduce the dependence on path RTT for flow throughput.
+One of the so-called "Prague Requirements" adopted by L4S is to reduce the dependence on path RTT for flow throughput.
 Conventional single-queue AQM tends to result in a consistent average cwnd across flows sharing the bottleneck, and since 
 BDP == cwnd * MTU == throughput * RTT, the throughput of each flow is inversely proportional to the effective RTT 
 experienced by that flow, which in turn is the baseline path RTT plus the queue delay.
