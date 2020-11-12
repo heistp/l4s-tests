@@ -75,6 +75,9 @@ TODO
 
 TODO
 
+![L4S Network Bias](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/s1-charts/l4s_network_bias.svg)
+*Figure 2*
+
 ### Intra-flow Latency Spikes
 
 TODO

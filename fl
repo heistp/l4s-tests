@@ -1898,6 +1898,12 @@ cli_gen_readme() {
 		echo "$RESULTS_URL/$RESULTS_DIR/$batch_dir/$batch_dir-$suffix"
 	}
 
+	chart_url() {
+		local dir="$1"
+		local filename="$2"
+		echo "$RESULTS_URL/$RESULTS_DIR/$dir/$filename"
+	}
+
 	plot_link() {
 		local text="$1"
 		local batch_dir="$2"
@@ -1923,6 +1929,20 @@ cli_gen_readme() {
 		local batch_dir="$2"
 		local suffix="$3"
 		echo "![$text]($(plot_url "$2" "$3"))"
+	}
+
+	chart_link() {
+		local text="$1"
+		local dir="$2"
+		local filename="$3"
+		echo "[$text]($(chart_url "$2" "$3"))"
+	}
+
+	chart_inline() {
+		local text="$1"
+		local dir="$2"
+		local filename="$3"
+		echo "![$text]($(chart_url "$2" "$3"))"
 	}
 
 	eval "cat << EndOfREADME

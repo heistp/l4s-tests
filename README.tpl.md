@@ -75,6 +75,9 @@ TODO
 
 TODO
 
+$(chart_inline "L4S Network Bias" "s1-charts" "l4s_network_bias.svg")
+*Figure 2*
+
 ### Intra-flow Latency Spikes
 
 TODO
