@@ -123,7 +123,7 @@ some extent.
 $(chart_inline "L4S RTT Bias 10/160ms" "s1-charts" "rttfair_cc_qdisc_10ms_160ms.svg")
 *Figure 3*
 
-This can be clearly seen in the above chart, in which a comparatively extreme ratio of path RTTs has been introduced between 
+This can be clearly seen in *Figure 3* above, in which a comparatively extreme ratio of path RTTs has been introduced between 
 two flows to illustrate the effect.  In the middle, the 250ms dumb FIFO is clearly seen to dilute the effect (the effective 
 RTTs are 260ms and 410ms respectively) to the point where, except for two CUBIC flows competing against each other, other 
 effects dominate the result in terms of steady-state throughput.  On the right, the AF AQM clearly reduces the RTT bias 
