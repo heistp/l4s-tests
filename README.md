@@ -10,6 +10,10 @@ Jonathan Morton
 1. [Introduction](#introduction)
 2. [Key Findings](#key-findings)
 3. [Elaboration on Key Findings](#elaboration-on-key-findings)
+   1. [Network Bias](#network-bias)
+   2. [RTT Unfairness](#rtt-unfairness)
+   3. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
+   4. [Burst Intolerance](#burst-intolerance)
 4. [Full Results](#full-results)
    1. [Scenario 1: RTT Fairness](#scenario-1-rtt-fairness)
    2. [Scenario 2: Codel Rate Step](#scenario-2-codel-rate-step)
@@ -17,7 +21,8 @@ Jonathan Morton
 5. [Appendix](#appendix)
    1. [Scenario 1 Fairness Table](#scenario-1-fairness-table)
    2. [Background](#background)
-   3. [Test Setup](#test-setup)
+   3. [Deployments of fq_codel](#deployments-of-fq_codel)
+   4. [Test Setup](#test-setup)
 
 ## Introduction
 
@@ -53,7 +58,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 2. TCP Prague and dualpi2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
 3. L4S transports can experience broad
-   [intra-flow latency-spikes](#intra-flow-latency-spikes) at RFC 3168
+   [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC 3168
    bottlenecks, particularly in the widely deployed fq_codel.
 4. The marking scheme in the dualpi2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
@@ -77,11 +82,74 @@ TODO
 
 ### Intra-flow Latency Spikes
 
-TODO
+Intra-flow latency refers to the delay experienced within a single flow, and for
+TCP is typically measured using TCP RTT. Increases in intra-flow latency lead to
+delays experienced by the user, for example when HTTP/2 requests are
+multiplexed over a single TCP or QUIC flow that is building a queue.
 
-TODO Add reference to
-[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/) to
-explain why latency spikes occur.
+Due to the redefinition of the CE codepoint
+[[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)], L4S
+transports underreact to CE signals sent by existing
+[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs, causing them to inflate
+queues where these AQMs are deployed. We usually discuss this in the context of
+safety for non-L4S flows in the same RFC3168 queue, but the added delay that L4S
+flows can induce on themselves is also an important consideration.
+
+For a practical example, we'll look at the transient behavior of fq_codel. Rate
+reductions in particular can lead to intra-flow latency spikes. They occur
+routinely in fq_codel, both due to flow arrivals at the bottleneck, and rate
+changes in wireless links, which occur on timescales of tens to hundreds of
+milliseconds. (For more information on the approximate scope of fq_codel
+deployments, see [Deployments of fq_codel](#deployments-of-fq_codel)).
+
+First, let's look at what happens when a standard **CUBIC** flow experiences a
+routine 50% rate reduction in an fq_codel queue, from 50Mbps to 25Mbps (see
+*Figure 10*).
+
+![Rate Reduction for CUBIC with fq_codel, 50 -> 25Mbit at 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-clean-cubic-fq_codel-50Mbit-25mbit-80ms_tcp_delivery_with_rtt.svg)  
+*Figure 10*
+
+In *Figure 10* above, we can see a brief spike in intra-flow latency (TCP RTT)
+at around T=30, as Codel's estimator detects the queue, and the flow is
+signaled to slow down. CUBIC reacts with the expected 50% multiplicative
+decrease.
+
+Next, let's look at the result when an L4S **TCP Prague** flow experiences the
+same 50% rate reduction (see *Figure 11* below):
+
+![Rate Reduction for Prague with fq_codel, 50 -> 25Mbit at 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-clean-prague-fq_codel-50Mbit-25mbit-80ms_tcp_delivery_with_rtt.svg)  
+*Figure 11*
+
+Comparing *Figure 10* and *Figure 11*, we can see that the induced latency spike
+has a much longer duration for TCP Prague than CUBIC. Note that although the
+spike may appear small in magnitude due to the plot scale, 100ms is a
+significant induced delay when targets in the L4S queue are around 1ms, and
+further, we can see that the spike lasts around 5 seconds. This occurs because
+TCP Prague mis-interprets the CE signal as coming from an L4S instead of an
+RFC3168 queue. Prague reacts with a small linear cwnd reduction instead of the
+expected multiplicative decrease, building excessive queue until Codel's
+signaling eventually gets it under control.
+
+The consequences of L4S transports underreacting to RFC3168 CE signals can be
+more severe as the rate reductions get larger. See *Figure 12* and *Figure 13*
+below for what happens to TCP Prague flows when reduced from 50Mbps to 5Mbps and
+1Mbps, respectively. These larger reductions may be encountered, for example, as
+wireless devices with fq_codel in the driver change rates in areas of
+intermittent AP coverage.
+
+![Rate Reduction for Prague with fq_codel, 50 -> 5Mbit at 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-clean-prague-fq_codel-50Mbit-5mbit-80ms_tcp_delivery_with_rtt.svg)  
+*Figure 12*
+
+![Rate Reduction for Prague with fq_codel, 50 -> 1Mbit at 80ms](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-clean-prague-fq_codel-50Mbit-1mbit-80ms_tcp_delivery_with_rtt.svg)  
+*Figure 13*
+
+In *Figure 13* above, we see a latency spike that has exceeded the fixed scale
+of our plot. However, a review of the
+[.flent.gz file](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-clean-prague-fq_codel-50Mbit-1mbit-80ms.flent.gz)
+shows the maximum TCP RTT to be **4346ms**, and we can see that the spike lasts
+for over **30 seconds**. This behavior is something we need to be aware of
+before introducing an ambiguous definition of the CE signal in the presence of
+[fq_codel deployments](#deployments-of-fq_codel).
 
 ### Burst Intolerance
 
@@ -598,6 +666,18 @@ implementing a finer-grained control loop between the network and the transport
 layer.  Hence, instead of oscillating around the ideal (at best), the transport
 can keep the ideal amount of traffic in the network, simultaneously maximising
 throughput and minimising latency.
+
+### Deployments of fq_codel
+
+The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
+kernel since version 3.6 (late 2012) and is now in widespread use in commercial
+routers (e.g. Ubiquiti), CPE devices and some ISP backhauls (e.g.
+[Preseem](https://preseem.com/qoe-optimized-shaping/)). It has also been
+integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is used in
+Google WiFi and OpenWrt, as well as vendor products that depend on OpenWrt, such
+as Open Mesh products. Since fq_codel uses RFC3168 ECN signaling by default, it
+is important for safety and performance that new congestion control mechanisms
+take RFC3168 ECN into account.
 
 ### Test Setup
 
