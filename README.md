@@ -36,7 +36,7 @@ to use the available ECT(1) codepoint for two purposes:
   [RFC3168](https://tools.ietf.org/html/rfc3168) and
   [RFC8511](https://tools.ietf.org/html/rfc8511)
 * as a PHB (per-hop behavior) to select alternate treatment in bottlenecks,
-  giving some level of priority in dualpi2 queues for L4S traffic over
+  giving some level of priority in DualPI2 queues for L4S traffic over
   existing Internet traffic
 
 While safety concerns for existing flows have been covered before and have
@@ -52,15 +52,15 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 ## Key Findings
 
 1. The
-   [dualpi2](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-aqm-dualq-coupled/)
+   [DualPI2](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-aqm-dualq-coupled/)
    qdisc introduces a [network bias](#network-bias) for L4S flows over
    existing flows.
-2. TCP Prague and dualpi2 exhibit a greater level of
+2. TCP Prague and DualPI2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
 3. L4S transports can experience broad
    [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC 3168
    bottlenecks, particularly in the widely deployed fq_codel.
-4. The marking scheme in the dualpi2 qdisc is
+4. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
 
@@ -68,7 +68,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ### Network Bias
 
-![CUBIC(20ms) vs Prague(20ms) through dualpi2](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/l4s-s1-rttfair-ns-cubic-vs-prague-dualpi2-10Mbit-20ms-20ms_tcp_delivery_with_rtt.svg)  
+![CUBIC(20ms) vs Prague(20ms) through DualPI2](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/l4s-s1-rttfair-ns-cubic-vs-prague-dualpi2-10Mbit-20ms-20ms_tcp_delivery_with_rtt.svg)  
 *Figure 1*  
 
 TODO
@@ -152,6 +152,40 @@ before introducing an ambiguous definition of the CE signal in the presence of
 [fq_codel deployments](#deployments-of-fq_codel).
 
 ### Burst Intolerance
+
+The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
+1 ms threshold, which while effective for keeping queues shorter, causes
+excessive marking for bursty packet arrivals. This results in link
+under-utilization for the typically bursty Internet traffic. Burstiness can
+come from the link layer, for example with WiFi, where bursts of up to about
+4ms are sent, or just from cross-flow traffic through shared bottlenecks.
+
+Note that burstiness is distinguished from jitter in general, which is
+associated with a variance in inter-packet gaps, but does not necessarily
+consist of well-defined bursts of packets at line rate. In any case, both
+well-paced and bursty flows can be expected on the Internet.
+
+[Scenario 2](#scenario-2-codel-rate-step) and
+[Scenario 3](#scenario-3-codel-variable-rate) both include runs with netem
+simulated bursts of approximately 4ms in duration. In *Figure 14*, we can
+see how **CUBIC through fq_codel** handles such bursts.
+
+![Rate Reduction for CUBIC with fq_codel, 50Mbps -> 25Mbps with Bursty Traffic](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-bursty-cubic-fq_codel-50Mbit-25mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 14*
+
+Next, in *Figure 15* we see how **TCP Prague through DualPI2** handles the same
+bursts:
+
+![Rate Reduction for Prague with dualpi2, 50Mbps -> 25Mbps with Bursty Traffic](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-bursty-prague-dualpi2-50Mbit-25mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 15*
+
+In *Figure 14* and *Figure 15* we can see that the lower TCP RTT of TCP Prague
+comes with a tradeoff of about a 50% reduction in link utilization. While this
+may be appropriate for low-latency traffic, capacity seeking bulk downloads may
+prefer increased utilization at the expense of some intra-flow delay. We raise
+this point merely to help set the expectation that maintaining strictly low
+delays at bottlenecks comes at the expense of some link utilization for typical
+Internet traffic.
 
 ## Full Results
 
@@ -359,7 +393,7 @@ Bandwidth | RTTs | qdisc | vs | [L4S](http://sce.dnsmgr.net/_archive/l4s-2020-11
 10Mbit | 160ms-10ms | cnq_codel_af | cubic-vs-prague | [plot](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/l4s-s1-rttfair-ns-cubic-vs-prague-cnq_codel_af-10Mbit-160ms-10ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-cubic-vs-prague-cnq_codel_af-10Mbit-160ms-10ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-cubic-vs-prague-cnq_codel_af-10Mbit-160ms-10ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-cubic-vs-prague-cnq_codel_af-10Mbit-160ms-10ms.teardown.log)
 10Mbit | 160ms-10ms | cnq_codel_af | prague-vs-cubic | [plot](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/l4s-s1-rttfair-ns-prague-vs-cubic-cnq_codel_af-10Mbit-160ms-10ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-prague-vs-cubic-cnq_codel_af-10Mbit-160ms-10ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-prague-vs-cubic-cnq_codel_af-10Mbit-160ms-10ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s1-rttfair/batch-l4s-s1-rttfair-ns-prague-vs-cubic-cnq_codel_af-10Mbit-160ms-10ms.teardown.log)
 
-### Scenario 2: Rate Steps Down with fq_codel
+### Scenario 2: Codel Rate Step
 
 Burstiness | Bandwidth1 | RTT | qdisc | CC | [L4S](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/)
 ---------- | ---------- | --- | ----- | -- | -----------------------------------------------------------------------------------------
@@ -428,7 +462,7 @@ bursty | 1Mbit | 80 | dualpi2 | prague | [plot](http://sce.dnsmgr.net/_archive/l
 bursty | 1Mbit | 80 | fq_codel | cubic | [plot](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-bursty-cubic-fq_codel-50Mbit-1mbit-80ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-cubic-fq_codel-50Mbit-1mbit-80ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-cubic-fq_codel-50Mbit-1mbit-80ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-cubic-fq_codel-50Mbit-1mbit-80ms.teardown.log)
 bursty | 1Mbit | 80 | fq_codel | prague | [plot](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-bursty-prague-fq_codel-50Mbit-1mbit-80ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-prague-fq_codel-50Mbit-1mbit-80ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-prague-fq_codel-50Mbit-1mbit-80ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/batch-l4s-s2-codel-rate-step-ns-bursty-prague-fq_codel-50Mbit-1mbit-80ms.teardown.log)
 
-### Scenario 3: Variable Rates with fq_codel
+### Scenario 3: Codel Variable Rate
 
 Burstiness | RTT | qdisc | CC | [L4S](http://sce.dnsmgr.net/_archive/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/)
 ---------- | --- | ----- | -- | ---------------------------------------------------------------------------------------------
