@@ -1,4 +1,4 @@
-# SCE-L4S ECT(1) Test Results
+# L4S Tests
 
 Evidence in opposition to the L4S WGLC
 
