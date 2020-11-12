@@ -59,7 +59,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
    [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
 3. L4S transports can experience broad
    [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC 3168
-   bottlenecks, particularly in the widely deployed fq_codel.
+   bottlenecks, particularly with the widely deployed fq_codel.
 4. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
