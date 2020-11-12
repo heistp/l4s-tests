@@ -300,13 +300,13 @@ throughput and minimising latency.
 
 The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
 kernel since version 3.6 (late 2012) and is now in widespread use in commercial
-routers (e.g. Ubiquiti), CPE devices and some ISP backhauls (e.g.
-[Preseem](https://preseem.com/qoe-optimized-shaping/)). It has also been
-integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is used in
-Google WiFi and OpenWrt, as well as vendor products that depend on OpenWrt, such
-as Open Mesh products. Since fq_codel uses RFC3168 ECN signaling by default, it
-is important for safety and performance that new congestion control mechanisms
-take RFC3168 ECN into account.
+routers (e.g. Ubiquiti EdgeMAX and UniFi products), CPE devices and some ISP
+backhauls (see [Preseem](https://preseem.com/qoe-optimized-shaping/)). It has
+also been integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is
+used in Google WiFi and OpenWrt, as well as vendor products that depend on
+OpenWrt, such as Open Mesh products. Since fq_codel uses RFC3168 ECN signaling
+by default, it is important for safety and performance that new congestion
+control mechanisms take existing RFC3168 bottlenecks into account.
 
 ### Test Setup
 
