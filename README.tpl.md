@@ -52,12 +52,9 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
    existing flows.
 2. TCP Prague and dualpi2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
-3. Due to the incompatible redefinition of CE defined in
-   [l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/),
-   L4S transports can experience broad
+3. L4S transports can experience broad
    [intra-flow latency-spikes](#intra-flow-latency-spikes) at RFC 3168
-   bottlenecks, particularly upon rate reductions in the widely deployed
-   fq_codel.
+   bottlenecks, particularly in the widely deployed fq_codel.
 4. The marking scheme in the dualpi2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
@@ -81,6 +78,10 @@ $(chart_inline "L4S Network Bias" "s1-charts" "l4s_network_bias.svg")
 ### Intra-flow Latency Spikes
 
 TODO
+
+TODO Add reference to
+[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/) to
+explain why latency spikes occur.
 
 ### Burst Intolerance
 
