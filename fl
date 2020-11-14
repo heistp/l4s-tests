@@ -113,6 +113,7 @@ plot_vs_title() {
 		cubic-vs-cubic) echo "CUBIC vs CUBIC" ;;
 		cubic-vs-prague) echo "CUBIC vs Prague" ;;
 		prague-vs-cubic) echo "Prague vs CUBIC" ;;
+		prague-vs-reno) echo "Prague vs Reno" ;;
 		prague-vs-prague) echo "Prague vs Prague" ;;
 		reno-vs-reno) echo "Reno vs Reno" ;;
 		bbr-vs-cubic-sce) echo "BBR vs CUBIC-SCE" ;;
@@ -184,6 +185,7 @@ plot_file() {
 	local bandwidth=$(plot_tattr bandwidth "$subtitle")
 	local vs=$(plot_tattr vs "$subtitle")
 	local qdisc=$(plot_tattr qdisc "$subtitle")
+	local tunnel=$(plot_tattr tunnel "$subtitle")
 
 	# output path
 	local outdir=$(dirname "$in")
@@ -414,6 +416,30 @@ plot_s4_box_totals() {
 		esac
 	}
 	rtt_scale=$(plot_rtt_scale_s4 $rtt)
+}
+
+# plot_s5_tcp_delivery_with_rtt is the plot visitor for scenario 5
+plot_s5_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $tunnel tunnel, $vs_title"
 }
 
 
@@ -658,8 +684,22 @@ ns_setup() {
 	sudo ip netns add srv || return $?
 	sudo ip link add dev $NS_SRV_LEFT type veth peer name $NS_MID_RIGHT || return $?
 	sudo ip link set dev $NS_SRV_LEFT netns srv || return $?
-	nsx srv ip addr add $NS_SRV_IP dev $NS_SRV_LEFT || return $?
+	nsx srv ip addr add $NS_SRV_NET dev $NS_SRV_LEFT || return $?
 	nsx srv ip link set $NS_SRV_LEFT up || return $?
+	# srv wireguard
+	nsx srv ip link add dev $NS_WG_IFACE type wireguard
+	nsx srv ip addr add dev $NS_WG_IFACE $NS_SRV_WG_NET peer $NS_CLI_WG_IP
+	echo $NS_SRV_WG_PRIV > /tmp/ns_srv_wg_priv
+	nsx srv wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_srv_wg_priv peer "$NS_CLI_WG_PUB" allowed-ips $NS_CLI_WG_IP endpoint $NS_CLI_IP:$NS_WG_PORT
+	nsx srv ip link set up dev $NS_WG_IFACE
+	# srv ipfou
+	nsx srv ip fou add port $NS_FOU_PORT ipproto 4
+	nsx srv ip link add name $NS_FOU_IFACE type ipip \
+		remote $NS_CLI_IP local $NS_SRV_IP ttl 225 \
+		encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	nsx srv ip addr add $NS_SRV_FOU_NET dev $NS_FOU_IFACE
+	nsx srv ip link set $NS_FOU_IFACE up
+
 	if [[ $NS_OFFLOADS == off ]]; then
 		set_offloads $NS_SRV_LEFT off srv || return $?
 	fi
@@ -690,7 +730,7 @@ ns_setup() {
 	nsx mid ip link set dev mid.b up || return $?
 
 	# cli uses default namespace
-	sudo ip addr add $NS_CLI_IP dev $NS_CLI_RIGHT || return $?
+	sudo ip addr add $NS_CLI_NET dev $NS_CLI_RIGHT || return $?
 	sudo ip link set $NS_CLI_RIGHT up || return $?
 	if [[ $NS_OFFLOADS == off ]]; then
 		set_offloads $NS_CLI_RIGHT off || return $?
@@ -702,6 +742,19 @@ ns_setup() {
 	elif [[ $arch == "l4s" ]]; then
 		sudo sysctl -qw net.ipv4.tcp_ecn=3 || return $? >/dev/null
 	fi
+	# cli wireguard
+	sudo ip link add $NS_WG_IFACE type wireguard
+	sudo ip addr add $NS_CLI_WG_NET dev $NS_WG_IFACE
+	echo $NS_CLI_WG_PRIV > /tmp/ns_cli_wg_priv
+	sudo wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_cli_wg_priv peer "$NS_SRV_WG_PUB" allowed-ips $NS_SRV_WG_IP endpoint $NS_SRV_IP:$NS_WG_PORT
+	sudo ip link set $NS_WG_IFACE up
+	# cli ipfou
+	sudo ip fou add port $NS_FOU_PORT ipproto 4
+	sudo ip link add name $NS_FOU_IFACE type ipip \
+		remote $NS_SRV_IP local $NS_CLI_IP ttl 225 \
+		encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	sudo ip addr add $NS_CLI_FOU_NET dev $NS_FOU_IFACE
+	sudo ip link set $NS_FOU_IFACE up
 
 	# start netserver (with -d for debug so it doesn't change perms on /dev/null)
 	if ! command -v netserver >&/dev/null; then
@@ -727,6 +780,11 @@ ns_teardown() {
 	# delete namespaces
 	sudo ip netns del srv || true
 	sudo ip netns del mid || true
+
+	# delete wireguard in default namespace
+	sudo ip link delete $NS_WG_IFACE type wireguard
+	sudo ip link delete $NS_FOU_IFACE type ipip
+	sudo ip fou delete port $NS_FOU_PORT ipproto 4
 }
 
 #############################################################################
@@ -878,6 +936,9 @@ remote_plot() {
 				box_totals s4 || return $?
 			plot_dir $dir/$arch-s4-bidir-asym \
 				all_scaled_delivery s4 || return $?
+
+			plot_dir $dir/$arch-s5-tunnel \
+				tcp_delivery_with_rtt s5 || return $?
 		fi
 	done
 }
@@ -1480,6 +1541,29 @@ bleach_ce() {
 	done
 }
 
+# bleach_ecn bleaches the ECN field to 0 for traffic with the specified DSCP
+bleach_ecn() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args
+	for dev in $(node_devs $arch $net $node $dir); do
+		args="-i $dev -p tcp -m dscp --dscp $dscp -j TOS --set-tos 0/0x03"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -I PREROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n || return $?
+			;;
+		esac
+	done
+}
+
 
 #############################################################################
 #
@@ -1720,6 +1804,28 @@ cli_gen_table() {
 						"$(links l4s)"
 					done
 				done
+			done
+		done
+	}
+
+	# scenario 5
+	s5_emit_table() {
+		local sname="s5-tunnel"
+		emit_header "Tunnel | RTT | qdisc | vs | [L4S]($(burl l4s)/)"
+		local tunnel vs
+		for tunnel in wireguard ipfou; do
+			for vs in prague-vs-cubic prague-vs-reno; do
+			local s5_l4s_url="$(burl l4s)/batch-l4s-$sname-phys-$tunnel-$vs-fq_codel-50Mbit-20ms"
+			local s5_l4s_plot_url="$(burl l4s)/l4s-$sname-phys-$tunnel-$vs-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg"
+
+			verify_url "$s5_l4s_url.log"
+			verify_url "$s5_l4s_plot_url"
+
+			emit_row $tunnel \
+				20ms \
+				fq_codel \
+				$vs \
+				"$(links l4s)"
 			done
 		done
 	}

@@ -14,10 +14,13 @@ Jonathan Morton
    2. [RTT Unfairness](#rtt-unfairness)
    3. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
    4. [Burst Intolerance](#burst-intolerance)
+   5. [Unsafety in Tunnels Through RFC3168 Bottlenecks](#unsafety-in-tunnels-through-rfc3168-bottlenecks)
 4. [Full Results](#full-results)
    1. [Scenario 1: RTT Fairness](#scenario-1-rtt-fairness)
    2. [Scenario 2: Codel Rate Step](#scenario-2-codel-rate-step)
    3. [Scenario 3: Codel Variable Rate](#scenario-3-codel-variable-rate)
+   4. [Scenario 4: Bi-directional Traffic, Asymmetric Rates](#scenario-4-bi-directional-traffic-asymmetric-rates)
+   5. [Scenario 5: Tunnels](#scenario-5-tunnels)
 5. [Appendix](#appendix)
    1. [Scenario 1 Fairness Table](#scenario-1-fairness-table)
    2. [Background](#background)
@@ -249,6 +252,60 @@ prefer increased utilization at the expense of some intra-flow delay. We raise
 this point merely to help set the expectation that maintaining strictly low
 delays at bottlenecks comes at the expense of some link utilization for typical
 Internet traffic.
+
+### Unsafety in Tunnels Through RFC3168 Bottlenecks
+
+When tunneled traffic traverses an RFC 3168 bottleneck, including those with FQ
+(such as fq_codel), it can lose the flow isolation that L4S depends on for flow
+safety. When this happens, L4S flows dominate the non-L4S flows in the tunnel,
+whether the non-L4S flows are ECN capable or not.
+
+This is expected to happen to any tunneled traffic whose encapsulated packets
+use a fixed 5-tuple (most of them), at any RFC3168 bottleneck, with or without
+FQ. Here is a common sample topology:
+
+```
+    -------------------    ------------    -------------------
+    | Tunnel Endpoint |----| fq_codel |----| Tunnel Endpoint |
+    -------------------    ------------    -------------------
+```
+
+In *Figure 16* below, we can see how an L4S **Prague** flow (the red trace)
+dominates a standard **CUBIC** flow (the green trace) in the same
+[Wireguard](https://www.wireguard.com/) tunnel:
+
+![wireguard Tunnel, Prague vs CUBIC](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 16*
+
+
+The following table shows the 60-second median throughputs of the tested flows
+(reported by netperf, and in the .flent.gz files):
+
+| Tunnel                                    | CC algo 1 | CC algo 2 | Throughput 1 | Throughput 2 | Ratio |
+| ----------------------------------------- | --------- | --------- | ------------ | ------------ | ----- |
+| [Wireguard](https://www.wireguard.com/)   | Prague    | CUBIC     | 43.75 Mbps   | 2.41 Mbps    | 18:1  |
+| [Wireguard](https://www.wireguard.com/)   | Prague    | Reno      | 43.27 Mbps   | 3.91 Mbps    | 11:1  |
+| [ipfou](https://lwn.net/Articles/614348/) | Prague    | CUBIC     | 44.81 Mbps   | 2.54 Mbps    | 18:1  |
+| [ipfou](https://lwn.net/Articles/614348/) | Prague    | Reno      | 44.27 Mbps   | 3.06 Mbps    | 14:1  |
+
+See [Scenario 5](#scenario-5-tunnels) in the Appendix for links to these
+results, which are expected to be similar with most any tunnel.
+
+*Note #1* In testing this scenario, it was discovered that the [Foo over
+UDP](https://lwn.net/Articles/614348/) tunnel has the ability to use an
+automatic source port (`encap-sport auto`), which restores flow isolation by
+using a different source port for each inner flow. However, this is tunnel
+dependent, and secure tunnels like VPNs are not likely to support this option,
+as doing so would be a security risk.
+
+*Note #2* Also in testing, we found that when using a netns (network namespaces)
+environment, the Linux kernel (5.4 at least) tracks a tunnel's inner flows even
+as their encapsulated packets cross namespace boundaries, making the results not
+representative of what typically happens in the real world. Flows not only get
+their own hash, but that hash can actually change across the lifetime of the
+flow, resulting in an unexpected AQM response. To avoid this problem, make sure
+the client, middlebox and server all run on different kernels when testing
+tunnels.
 
 ## Full Results
 
@@ -545,6 +602,17 @@ bursty | 80 | dualpi2 | cubic | [plot](http://sce.dnsmgr.net/results/l4s-2020-11
 bursty | 80 | dualpi2 | prague | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/l4s-s3-codel-variable-rate-ns-bursty-prague-dualpi2-100Mbit-80ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-dualpi2-100Mbit-80ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-dualpi2-100Mbit-80ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-dualpi2-100Mbit-80ms.teardown.log)
 bursty | 80 | fq_codel | cubic | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/l4s-s3-codel-variable-rate-ns-bursty-cubic-fq_codel-100Mbit-80ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-cubic-fq_codel-100Mbit-80ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-cubic-fq_codel-100Mbit-80ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-cubic-fq_codel-100Mbit-80ms.teardown.log)
 bursty | 80 | fq_codel | prague | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/l4s-s3-codel-variable-rate-ns-bursty-prague-fq_codel-100Mbit-80ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-fq_codel-100Mbit-80ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-fq_codel-100Mbit-80ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s3-codel-variable-rate/batch-l4s-s3-codel-variable-rate-ns-bursty-prague-fq_codel-100Mbit-80ms.teardown.log)
+
+### Scenario 4: Bi-directional Traffic, Asymmetric Rates
+
+### Scenario 5: Tunnels
+
+Tunnel | RTT | qdisc | vs | [L4S](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/)
+------ | --- | ----- | -- | -------------------------------------------------------------------------------
+wireguard | 20ms | fq_codel | prague-vs-cubic | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms.teardown.log)
+wireguard | 20ms | fq_codel | prague-vs-reno | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-wireguard-prague-vs-reno-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-reno-fq_codel-50Mbit-20ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-reno-fq_codel-50Mbit-20ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-wireguard-prague-vs-reno-fq_codel-50Mbit-20ms.teardown.log)
+ipfou | 20ms | fq_codel | prague-vs-cubic | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-ipfou-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-cubic-fq_codel-50Mbit-20ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-cubic-fq_codel-50Mbit-20ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-cubic-fq_codel-50Mbit-20ms.teardown.log)
+ipfou | 20ms | fq_codel | prague-vs-reno | [plot](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-ipfou-prague-vs-reno-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg) - [cli.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-reno-fq_codel-50Mbit-20ms.tcpdump_cli_cli.r.pcap.xz) - [srv.pcap](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-reno-fq_codel-50Mbit-20ms.tcpdump_srv_srv.l.pcap.xz) - [teardown](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/batch-l4s-s5-tunnel-phys-ipfou-prague-vs-reno-fq_codel-50Mbit-20ms.teardown.log)
 
 ## Appendix
 

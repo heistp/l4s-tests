@@ -11,6 +11,7 @@
 # s2-codel-rate-step: Rate Steps Down with fq_codel
 # s3-codel-variable-rate: Variable Rates with fq_codel
 # s4-bidir-asym: bi-directional traffic with asymmetric rates
+# s5-tunnel: two-flow competition over tunnels
 #
 
 #
@@ -30,7 +31,6 @@ extended_metadata = yes
 debug_error = no
 debug_log = no
 ip_version = 4
-for_net = net_ns
 # standard endpoint hooks, with tcp_metrics, tcpdump and scetrace
 endpoint_hooks = \
 	cli \
@@ -65,6 +65,16 @@ midbox_hooks_htb_bidir = \
 		qdisc bidir ingress root ${netem_args}\"
 # setup hooks (inheriting batches must define midbox_hooks)
 setup_hooks = ${endpoint_hooks} ${midbox_hooks}
+# netns settings
+net = ns
+ns_srv_ip = 10.9.9.2
+ns_srv_wg_ip = 10.9.99.2
+ns_srv_fou_ip = 10.9.98.2
+hosts = ${ns_srv_ip}
+# phys settings
+phys_srv_ip = ts2
+phys_srv_wg_ip = 10.9.89.2
+phys_srv_fou_ip = 10.9.88.2
 
 #
 # L4S settings
@@ -72,7 +82,7 @@ setup_hooks = ${endpoint_hooks} ${midbox_hooks}
 [Batch::l4s]
 abstract = yes
 arch = l4s
-hosts_phys = ts2
+#hosts_phys = ts2
 # default midbox_hooks for L4S use child qdiscs of htb
 midbox_hooks = ${midbox_hooks_htb}
 
@@ -81,14 +91,16 @@ midbox_hooks = ${midbox_hooks_htb}
 #
 
 # net args (unused as we use only ns in this batch)
-[Arg::net_phys]
-net = phys
-hosts = ${hosts_phys}
+#[Arg::net_phys]
+#net = phys
+#hosts = ${hosts_phys}
 
-[Arg::net_ns]
-net = ns
+#[Arg::net_ns]
+#net = ns
 # hosts must match NS_SRV_IP in fl_global.sh
-hosts = 10.9.9.2
+#ns_srv_ip = 10.9.9.2
+#ns_srv_wg_ip = 10.9.99.2
+#hosts = ${ns_srv_ip}
 
 # Commands
 [Command::clear]
@@ -475,3 +487,71 @@ netem_args = netem delay 10ms limit 1000000
 rtt = 80ms
 length = 60
 netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 5- Two-flow competition over tunnels
+#
+[Batch::s5-tunnel]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s5_lowrtt
+filename_extra = ${net}-${tunnel}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s5_50mbit
+for_tunnel = s5_wireguard, s5_ipfou
+title = net:${net} tunnel:${tunnel} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s5_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+midbox_hooks = ${s5_midbox_hooks_htb}
+net = ns
+
+# S5 L4S
+[Batch::l4s-s5-tunnel]
+inherits = global, l4s, s5-tunnel
+for_vs = s5_prague-vs-cubic, \
+	s5_prague-vs-reno
+for_qdisc = s5_fq_codel
+
+[Arg::s5_prague-vs-cubic]
+vs = prague-vs-cubic
+cc_algos = prague,cubic
+
+[Arg::s5_prague-vs-reno]
+vs = prague-vs-reno
+cc_algos = prague,reno
+
+[Arg::s5_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+# S5 common
+[Arg::s5_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s5_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s5_wireguard]
+tunnel = wireguard
+hosts = ${ns_srv_wg_ip}
+#hosts = ${phys_srv_wg_ip}
+
+[Arg::s5_ipfou]
+tunnel = ipfou
+hosts = ${ns_srv_fou_ip}
+#hosts = ${phys_srv_fou_ip}

@@ -40,6 +40,18 @@ NS_MID_LEFT=
 NS_MID_RIGHT=
 NS_SRV_LEFT=
 
+# wireguard config
+NS_SRV_WG_PRIV="WKYMm45p+0R0knXkp7e3rvxRSUwMg6pYGUa1R5ITVW0="
+NS_SRV_WG_PUB="gA+0M6RBxpEqB9et57D7Im6mxyHQEiQGMISmEkPUIHw="
+NS_CLI_WG_PRIV="KJ1e43Dz5xT82L3/ZVVA0iybHRvANCnIeRNKvHNVRFo="
+NS_CLI_WG_PUB="5xW8bLo4+m/CrfDA96JjEei/lYVegaGZicmRSenX8H0="
+NS_WG_IFACE=wg1
+NS_WG_PORT=51821
+
+# fou config
+NS_FOU_IFACE=fou1
+NS_FOU_PORT=5556
+
 # all nodes to clear before each netns test
 CLEAR_NODES=(cli mid srv)
 
@@ -127,8 +139,18 @@ TMPDIR="/tmp/l4s-tests"
 
 # namespaces config
 NS_OFFLOADS=off
-NS_CLI_IP=10.9.9.1/24
-NS_SRV_IP=10.9.9.2/24
+NS_CLI_IP=10.9.9.1
+NS_CLI_NET=$NS_CLI_IP/24
+NS_SRV_IP=10.9.9.2
+NS_SRV_NET=$NS_SRV_IP/24
+NS_CLI_WG_IP=10.9.99.1
+NS_CLI_WG_NET=$NS_CLI_WG_IP/24
+NS_SRV_WG_IP=10.9.99.2
+NS_SRV_WG_NET=$NS_SRV_WG_IP/24
+NS_CLI_FOU_IP=10.9.98.1
+NS_CLI_FOU_NET=$NS_CLI_FOU_IP/24
+NS_SRV_FOU_IP=10.9.98.2
+NS_SRV_FOU_NET=$NS_SRV_FOU_IP/24
 
 # data_dir emits the data directory for a node
 data_dir() {
