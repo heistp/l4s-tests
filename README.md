@@ -1,6 +1,6 @@
 # L4S Tests
 
-Evidence in opposition to the L4S WGLC
+Tests of L4S pertaining to the upcoming WGLC
 
 Pete Heist  
 Jonathan Morton  
@@ -10,11 +10,11 @@ Jonathan Morton
 1. [Introduction](#introduction)
 2. [Key Findings](#key-findings)
 3. [Elaboration on Key Findings](#elaboration-on-key-findings)
-   1. [Network Bias](#network-bias)
-   2. [RTT Unfairness](#rtt-unfairness)
-   3. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
-   4. [Burst Intolerance](#burst-intolerance)
-   5. [Unsafety in Tunnels Through RFC3168 Bottlenecks](#unsafety-in-tunnels-through-rfc3168-bottlenecks)
+   1. [Unsafety in Tunnels Through RFC3168 Bottlenecks](#unsafety-in-tunnels-through-rfc3168-bottlenecks)
+   2. [Network Bias](#network-bias)
+   3. [RTT Unfairness](#rtt-unfairness)
+   4. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
+   5. [Burst Intolerance](#burst-intolerance)
 4. [Full Results](#full-results)
    1. [Scenario 1: RTT Fairness](#scenario-1-rtt-fairness)
    2. [Scenario 2: Codel Rate Step](#scenario-2-codel-rate-step)
@@ -39,14 +39,12 @@ proposes to use the available ECT(1) codepoint for two purposes:
   [RFC3168](https://tools.ietf.org/html/rfc3168) and
   [RFC8511](https://tools.ietf.org/html/rfc8511)
 * as a PHB (per-hop behavior) to select alternate treatment in bottlenecks,
-  giving some level of priority in DualPI2 queues for L4S traffic over
-  existing Internet traffic
+  potentially giving some level of priority in DualPI2 queues for L4S traffic
+  over existing Internet traffic
 
-While safety concerns for existing flows have been covered before and have
-not been addressed in the implementation (see
-[issues](https://trac.ietf.org/trac/tsvwg/report/1) listed in TSVWG's trac),
-these tests raise new fairness and performance concerns that should be
-understood before L4S is considered for WGLC.
+These tests identify tunnels as a path to flow unsafety at
+[RFC3168](https://tools.ietf.org/html/rfc3168) bottlenecks, concerns around
+network bias, and delay spikes in RFC3168 bottlenecks on transient behavior.
 
 Readers wishing for a quick background in high-fidelity congestion control
 may wish to read the [Background](#background) section, while those already
@@ -54,20 +52,78 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ## Key Findings
 
-1. The
+1. In tunnels, [L4S flows will dominate non-L4S
+   flows](#unsafety-in-tunnels-through-rfc3168-bottlenecks) when the tunneled
+   traffic passes through an [RFC3168](https://tools.ietf.org/html/rfc3168)
+   bottleneck, even if it has FQ.
+2. The
    [DualPI2](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-aqm-dualq-coupled/)
-   qdisc introduces a [network bias](#network-bias) for L4S flows over
-   existing flows.
-2. TCP Prague and DualPI2 exhibit a greater level of
-   [RTT unfairness](#rtt-unfairness) than the commonly used CUBIC and pfifo.
-3. L4S transports can experience broad
-   [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC 3168
+   qdisc introduces a [network bias](#network-bias) for TCP Prague flows over
+   existing CUBIC flows.
+3. TCP Prague and DualPI2 exhibit a greater level of
+   [RTT unfairness](#rtt-unfairness) than the presently used CUBIC and pfifo.
+4. L4S transports experience
+   [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC3168
    bottlenecks, particularly with the widely deployed fq_codel.
-4. The marking scheme in the DualPI2 qdisc is
+5. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
 
 ## Elaboration on Key Findings
+
+### Unsafety in Tunnels Through RFC3168 Bottlenecks
+
+When tunneled traffic traverses an RFC3168 bottleneck, including those with FQ
+(such as fq_codel), it can lose the flow isolation that L4S depends on for
+safety with non-L4S traffic. When this happens, L4S flows dominate the non-L4S
+flows in the tunnel, whether the non-L4S flows are ECN capable or not.
+
+This is expected to happen with any tunneled traffic whose encapsulated packets
+use a fixed 5-tuple (most of them), at any RFC3168 bottleneck, with or without
+FQ. Here is a common sample topology:
+
+```
+    -------------------    ------------    -------------------
+    | Tunnel Endpoint |----| fq_codel |----| Tunnel Endpoint |
+    -------------------    ------------    -------------------
+```
+
+In *Figure 16* below, we can see how an L4S **Prague** flow (the red trace)
+dominates a standard **CUBIC** flow (the green trace) in the same
+[Wireguard](https://www.wireguard.com/) tunnel:
+
+![wireguard Tunnel, Prague vs CUBIC](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 16*
+
+
+The following table shows the 60-second median throughputs of the tested flows
+(reported by netperf, and in the .flent.gz files):
+
+| Tunnel                                    | CC algo 1 | CC algo 2 | Throughput 1 | Throughput 2 | Ratio |
+| ----------------------------------------- | --------- | --------- | ------------ | ------------ | ----- |
+| [Wireguard](https://www.wireguard.com/)   | Prague    | CUBIC     | 43.75 Mbps   | 2.41 Mbps    | 18:1  |
+| [Wireguard](https://www.wireguard.com/)   | Prague    | Reno      | 43.27 Mbps   | 3.91 Mbps    | 11:1  |
+| [ipfou](https://lwn.net/Articles/614348/) | Prague    | CUBIC     | 44.81 Mbps   | 2.54 Mbps    | 18:1  |
+| [ipfou](https://lwn.net/Articles/614348/) | Prague    | Reno      | 44.27 Mbps   | 3.06 Mbps    | 14:1  |
+
+See [Scenario 5](#scenario-5-tunnels) in the Appendix for links to these
+results, which are expected to be similar with most any tunnel.
+
+*Note #1* In testing this scenario, it was discovered that the [Foo over
+UDP](https://lwn.net/Articles/614348/) tunnel has the ability to use an
+automatic source port (`encap-sport auto`), which restores flow isolation by
+using a different source port for each inner flow. However, this is tunnel
+dependent, and secure tunnels like VPNs are not likely to support this option,
+as doing so would be a security risk.
+
+*Note #2* Also in testing, we found that when using a netns (network namespaces)
+environment, the Linux kernel (5.4 at least) tracks a tunnel's inner flows even
+as their encapsulated packets cross namespace boundaries, making the results not
+representative of what typically happens in the real world. Flows not only get
+their own hash, but that hash can actually change across the lifetime of the
+flow, resulting in an unexpected AQM response. To avoid this problem, make sure
+the client, middlebox and server all run on different kernels when testing
+tunnels.
 
 ### Network Bias
 
@@ -252,60 +308,6 @@ prefer increased utilization at the expense of some intra-flow delay. We raise
 this point merely to help set the expectation that maintaining strictly low
 delays at bottlenecks comes at the expense of some link utilization for typical
 Internet traffic.
-
-### Unsafety in Tunnels Through RFC3168 Bottlenecks
-
-When tunneled traffic traverses an RFC 3168 bottleneck, including those with FQ
-(such as fq_codel), it can lose the flow isolation that L4S depends on for flow
-safety. When this happens, L4S flows dominate the non-L4S flows in the tunnel,
-whether the non-L4S flows are ECN capable or not.
-
-This is expected to happen to any tunneled traffic whose encapsulated packets
-use a fixed 5-tuple (most of them), at any RFC3168 bottleneck, with or without
-FQ. Here is a common sample topology:
-
-```
-    -------------------    ------------    -------------------
-    | Tunnel Endpoint |----| fq_codel |----| Tunnel Endpoint |
-    -------------------    ------------    -------------------
-```
-
-In *Figure 16* below, we can see how an L4S **Prague** flow (the red trace)
-dominates a standard **CUBIC** flow (the green trace) in the same
-[Wireguard](https://www.wireguard.com/) tunnel:
-
-![wireguard Tunnel, Prague vs CUBIC](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s5-tunnel/l4s-s5-tunnel-phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg)  
-*Figure 16*
-
-
-The following table shows the 60-second median throughputs of the tested flows
-(reported by netperf, and in the .flent.gz files):
-
-| Tunnel                                    | CC algo 1 | CC algo 2 | Throughput 1 | Throughput 2 | Ratio |
-| ----------------------------------------- | --------- | --------- | ------------ | ------------ | ----- |
-| [Wireguard](https://www.wireguard.com/)   | Prague    | CUBIC     | 43.75 Mbps   | 2.41 Mbps    | 18:1  |
-| [Wireguard](https://www.wireguard.com/)   | Prague    | Reno      | 43.27 Mbps   | 3.91 Mbps    | 11:1  |
-| [ipfou](https://lwn.net/Articles/614348/) | Prague    | CUBIC     | 44.81 Mbps   | 2.54 Mbps    | 18:1  |
-| [ipfou](https://lwn.net/Articles/614348/) | Prague    | Reno      | 44.27 Mbps   | 3.06 Mbps    | 14:1  |
-
-See [Scenario 5](#scenario-5-tunnels) in the Appendix for links to these
-results, which are expected to be similar with most any tunnel.
-
-*Note #1* In testing this scenario, it was discovered that the [Foo over
-UDP](https://lwn.net/Articles/614348/) tunnel has the ability to use an
-automatic source port (`encap-sport auto`), which restores flow isolation by
-using a different source port for each inner flow. However, this is tunnel
-dependent, and secure tunnels like VPNs are not likely to support this option,
-as doing so would be a security risk.
-
-*Note #2* Also in testing, we found that when using a netns (network namespaces)
-environment, the Linux kernel (5.4 at least) tracks a tunnel's inner flows even
-as their encapsulated packets cross namespace boundaries, making the results not
-representative of what typically happens in the real world. Flows not only get
-their own hash, but that hash can actually change across the lifetime of the
-flow, resulting in an unexpected AQM response. To avoid this problem, make sure
-the client, middlebox and server all run on different kernels when testing
-tunnels.
 
 ## Full Results
 
