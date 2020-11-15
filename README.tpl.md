@@ -73,14 +73,17 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ### Unsafety in Tunnels Through RFC3168 Bottlenecks
 
-When tunneled traffic traverses an RFC3168 bottleneck, including those with FQ
-(such as fq_codel), it can lose the flow isolation that L4S depends on for
-safety with non-L4S traffic. When this happens, L4S flows dominate the non-L4S
-flows in the tunnel, whether the non-L4S flows are ECN capable or not.
+When traffic passes through a tunnel, its encapsulated packets usually share the
+same 5-tuple, so inner flows lose the flow isolation provided by FQ bottlenecks.
+This means that when tunneled L4S and non-L4S traffic traverse the same
+[RFC3168](https://tools.ietf.org/html/rfc3168) bottleneck, even when it has FQ,
+there is no flow isolation to maintain safety between the flows.
 
-This is expected to happen with any tunneled traffic whose encapsulated packets
-use a fixed 5-tuple (most of them), at any RFC3168 bottleneck, with or without
-FQ. Here is a common sample topology:
+In practical terms, the result is that L4S flows dominate non-L4S flows in
+the same tunnel (e.g. [Wireguard](https://www.wireguard.com/) or
+[OpenVPN](https://en.wikipedia.org/wiki/OpenVPN)), when the tunneled traffic
+passes through widely deployed [fq_codel](#deployments-of-fq_codel)
+bottlenecks. Here is a common sample topology:
 
 \`\`\`
     -------------------    ------------    -------------------
@@ -123,7 +126,7 @@ representative of what typically happens in the real world. Flows not only get
 their own hash, but that hash can actually change across the lifetime of the
 flow, resulting in an unexpected AQM response. To avoid this problem, make sure
 the client, middlebox and server all run on different kernels when testing
-tunnels.
+tunnels, as would be expected in the real world.
 
 ### Network Bias
 
