@@ -1,6 +1,6 @@
 # L4S Tests
 
-Tests of L4S pertaining to the upcoming WGLC
+Tests of L4S
 
 Pete Heist  
 Jonathan Morton  
@@ -10,41 +10,42 @@ Jonathan Morton
 1. [Introduction](#introduction)
 2. [Key Findings](#key-findings)
 3. [Elaboration on Key Findings](#elaboration-on-key-findings)
-   1. [Unsafety in Tunnels Through RFC3168 Bottlenecks](#unsafety-in-tunnels-through-rfc3168-bottlenecks)
-   2. [Network Bias](#network-bias)
-   3. [RTT Unfairness](#rtt-unfairness)
-   4. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
-   5. [Burst Intolerance](#burst-intolerance)
-4. [Full Results](#full-results)
+   1. [Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues)
+   2. [Tunneled Non-L4S Flows Not Protected by FQ](#tunneled-non-l4s-flows-not-protected-by-fq)
+   3. [Network Bias](#network-bias)
+   4. [RTT Unfairness](#rtt-unfairness)
+   5. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
+   6. [Burst Intolerance](#burst-intolerance)
+4. [Risk Assessment](#risk-assessment)
+   1. [Severity](#severity)
+   2. [Likelihood](#likelihood)
+5. [Full Results](#full-results)
    1. [Scenario 1: RTT Fairness](#scenario-1-rtt-fairness)
    2. [Scenario 2: Codel Rate Step](#scenario-2-codel-rate-step)
    3. [Scenario 3: Codel Variable Rate](#scenario-3-codel-variable-rate)
    4. [Scenario 4: Bi-directional Traffic, Asymmetric Rates](#scenario-4-bi-directional-traffic-asymmetric-rates)
    5. [Scenario 5: Tunnels](#scenario-5-tunnels)
-5. [Appendix](#appendix)
+   6. [Scenario 6: RFC3168 AQMs](#scenario-6-rfc3168-aqms)
+6. [Appendix](#appendix)
    1. [Scenario 1 Fairness Table](#scenario-1-fairness-table)
-   2. [Background](#background)
-   3. [Deployments of fq_codel](#deployments-of-fq_codel)
+   2. [Scenario 6 Fairness Table](#scenario-6-fairness-table)
+   3. [Background](#background)
    4. [Test Setup](#test-setup)
 
 ## Introduction
 
 The Transport Area Working Group
-([TSVWG](https://datatracker.ietf.org/group/tsvwg/about/)) will undergo a WGLC
-(working group last call) for [L4S](https://riteproject.eu/dctth/), which
-proposes to use the available ECT(1) codepoint for two purposes:
+([TSVWG](https://datatracker.ietf.org/group/tsvwg/about/)) is working on
+[L4S](https://riteproject.eu/dctth/),
+which proposes to use the available ECT(1) codepoint for two purposes:
 
 * to redefine the existing CE codepoint as a high-fidelity congestion control
   signal, which is incompatible with the present definition of CE in
   [RFC3168](https://tools.ietf.org/html/rfc3168) and
   [RFC8511](https://tools.ietf.org/html/rfc8511)
-* as a PHB (per-hop behavior) to select alternate treatment in bottlenecks,
-  potentially giving some level of priority in DualPI2 queues for L4S traffic
-  over existing Internet traffic
+* as a PHB (per-hop behavior) to select alternate treatment in bottlenecks
 
-These tests identify tunnels as a path to flow unsafety at
-[RFC3168](https://tools.ietf.org/html/rfc3168) bottlenecks, concerns around
-network bias, and delay spikes in RFC3168 bottlenecks on transient behavior.
+These tests evaluate some aspects of L4S's safety and performance.
 
 Readers wishing for a quick background in high-fidelity congestion control
 may wish to read the [Background](#background) section, while those already
@@ -52,38 +53,91 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 
 ## Key Findings
 
-1. In tunnels, [L4S flows will dominate non-L4S
-   flows](#unsafety-in-tunnels-through-rfc3168-bottlenecks) when the tunneled
-   traffic passes through an [RFC3168](https://tools.ietf.org/html/rfc3168)
-   bottleneck, even if it has FQ.
-2. The
+1. [Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues):
+   L4S flows dominate non-L4S flows, whether ECN enabled or not, when they
+   occupy a shared [RFC3168](https://tools.ietf.org/html/rfc3168) signaling
+   queue. 
+2. [Tunneled Non-L4S Flows Not Protected by FQ](#tunneled-non-l4s-flows-not-protected-by-fq):
+   Tunnels are a path to the result in Key Finding #1 at FQ bottlenecks like
+   fq_codel.
+3. The
    [DualPI2](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-aqm-dualq-coupled/)
    qdisc introduces a [network bias](#network-bias) for TCP Prague flows over
    existing CUBIC flows.
-3. TCP Prague and DualPI2 exhibit a greater level of
+4. TCP Prague and DualPI2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the presently used CUBIC and pfifo.
-4. L4S transports experience
+5. L4S transports experience
    [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC3168
    bottlenecks, particularly with the widely deployed fq_codel.
-5. The marking scheme in the DualPI2 qdisc is
+6. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
 
 ## Elaboration on Key Findings
 
-### Unsafety in Tunnels Through RFC3168 Bottlenecks
+### Unsafety in Shared RFC3168 Queues
 
-When traffic passes through a tunnel, its encapsulated packets usually share the
+When L4S and non-L4S flows are in the same queue signaled by an
+[RFC3168](https://tools.ietf.org/html/rfc3168) AQM, the L4S flows will dominate
+the non-L4S flows, regardless of whether the non-L4S flows are ECN capable.
+This appears to be independent of the AQM and settings used, although the
+results may differ to a smaller extent.
+
+The reason is that L4S flows expect high-frequency CE signaling, while non-L4S
+flows expect low-frequency CE signaling or drops. Not-ECT flows (standard
+non-ECN flows) are also dominated by L4S flows, because the AQM similarly drops
+packets for these flows instead of signaling CE.
+
+See the [Risk Assessment](#risk-assessment) section for a further discussion
+on this issue.
+
+*Figure 1* shows Prague vs CUBIC(Non-ECN) through a shared fq_codel queue. Note
+that here we use the parameter \`flows 1\` for fq_codel, which simulates traffic
+in a shared queue. That happens for
+[tunneled traffic](#tunneled-non-l4s-flows-not-protected-by-fq),
+or when a flow hash collision occurs.
+
+$(plot_inline "fq_codel shared queue, Prague vs CUBIC(Non-ECN)" "l4s-s6-rfc3168" "ns-prague-vs-cubic-noecn-fq_codel_1q_-50Mbit-20ms_tcp_delivery_with_rtt.svg")
+*Figure 1*
+
+*Figure 2* shows Prague vs Reno(Non-ECN) through a shared fq_codel queue. Reno
+seems to be more apt to be driven to minimum cwnd in these tests.
+
+$(plot_inline "fq_codel shared queue, Prague vs Reno(Non-ECN)" "l4s-s6-rfc3168" "ns-prague-vs-reno-noecn-fq_codel_1q_-50Mbit-20ms_tcp_delivery_with_rtt.svg")
+*Figure 2*
+
+*Figure 3* shows Prague vs Reno(ECN) through a shared PIE queue with ECN
+enabled.
+
+$(plot_inline "PIE ECN, Prague vs Reno(ECN)" "l4s-s6-rfc3168" "ns-prague-vs-reno-ecn-pie-50Mbit-20ms_tcp_delivery_with_rtt.svg")
+*Figure 3*
+
+See the [Scenario 6 Fairness Table](#scenario-6-fairness-table) for the
+steady-state throughput ratios of each run.
+
+See the [Scenario 6](#scenario-6-rfc3168-aqms) results for fq_codel, PIE and
+RED, each with two different common configurations.
+
+### Tunneled Non-L4S Flows Not Protected by FQ
+
+Related to the
+[unsafety in shared RFC3168 queues](#unsafety-in-shared-rfc3168-queues), when
+traffic passes through a tunnel, its encapsulated packets usually share the
 same 5-tuple, so inner flows lose the flow isolation provided by FQ bottlenecks.
 This means that when tunneled L4S and non-L4S traffic traverse the same
 [RFC3168](https://tools.ietf.org/html/rfc3168) bottleneck, even when it has FQ,
 there is no flow isolation to maintain safety between the flows.
 
-In practical terms, the result is that L4S flows dominate non-L4S flows in
-the same tunnel (e.g. [Wireguard](https://www.wireguard.com/) or
+In practical
+terms, the result is that L4S flows dominate non-L4S flows in the same tunnel
+(e.g. [Wireguard](https://www.wireguard.com/) or
 [OpenVPN](https://en.wikipedia.org/wiki/OpenVPN)), when the tunneled traffic
-passes through widely deployed [fq_codel](#deployments-of-fq_codel)
-bottlenecks. Here is a common sample topology:
+passes through fq_codel or CAKE qdiscs.
+
+See the [Risk Assessment](#risk-assessment) section for a further discussion
+on this issue.
+
+Here is a common sample topology:
 
 \`\`\`
     -------------------    ------------    -------------------
@@ -91,23 +145,15 @@ bottlenecks. Here is a common sample topology:
     -------------------    ------------    -------------------
 \`\`\`
 
-In *Figure 16* below, we can see how an L4S **Prague** flow (the red trace)
-dominates a standard **CUBIC** flow (the green trace) in the same
+In *Figure 10* below, we can see how an L4S **Prague** flow (the red trace)
+dominates a standard **CUBIC** flow (the blue trace) in the same
 [Wireguard](https://www.wireguard.com/) tunnel:
 
 $(plot_inline "wireguard Tunnel, Prague vs CUBIC" "l4s-s5-tunnel" "phys-wireguard-prague-vs-cubic-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg")  
-*Figure 16*
+*Figure 10*
 
-
-The following table shows the 60-second median throughputs of the tested flows
-(reported by netperf, and in the .flent.gz files):
-
-| Tunnel                                    | CC algo 1 | CC algo 2 | Throughput 1 | Throughput 2 | Ratio |
-| ----------------------------------------- | --------- | --------- | ------------ | ------------ | ----- |
-| [Wireguard](https://www.wireguard.com/)   | Prague    | CUBIC     | 43.75 Mbps   | 2.41 Mbps    | 18:1  |
-| [Wireguard](https://www.wireguard.com/)   | Prague    | Reno      | 43.27 Mbps   | 3.91 Mbps    | 11:1  |
-| [ipfou](https://lwn.net/Articles/614348/) | Prague    | CUBIC     | 44.81 Mbps   | 2.54 Mbps    | 18:1  |
-| [ipfou](https://lwn.net/Articles/614348/) | Prague    | Reno      | 44.27 Mbps   | 3.06 Mbps    | 14:1  |
+See [Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues)
+for more information on why this happens and what the result is.
 
 See [Scenario 5](#scenario-5-tunnels) in the Appendix for links to these
 results, which are expected to be similar with most any tunnel.
@@ -217,11 +263,9 @@ safety for non-L4S flows in the same RFC3168 queue, but the added delay that L4S
 flows can induce on themselves is also an important consideration.
 
 For a practical example, we'll look at the transient behavior of fq_codel. Rate
-reductions in particular can lead to intra-flow latency spikes. They occur
-routinely in fq_codel, both due to flow arrivals at the bottleneck, and rate
-changes in wireless links, which occur on timescales of tens to hundreds of
-milliseconds. (For more information on the approximate scope of fq_codel
-deployments, see [Deployments of fq_codel](#deployments-of-fq_codel)).
+reductions in particular can lead to intra-flow latency spikes. They can occur
+in fq_codel, both due to flow arrivals at the bottleneck, and rate changes in
+wireless links, which occur on timescales of tens to hundreds of milliseconds.
 
 First, let's look at what happens when a standard **CUBIC** flow experiences a
 routine 50% rate reduction in an fq_codel queue, from 50Mbps to 25Mbps (see
@@ -255,7 +299,7 @@ The consequences of L4S transports underreacting to RFC3168 CE signals can be
 more severe as the rate reductions get larger. See *Figure 12* and *Figure 13*
 below for what happens to TCP Prague flows when reduced from 50Mbps to 5Mbps and
 1Mbps, respectively. These larger reductions may be encountered, for example, as
-wireless devices with fq_codel in the driver change rates in areas of
+wireless devices with fq_codel built into the driver change rates in areas of
 intermittent AP coverage.
 
 $(plot_inline "Rate Reduction for Prague with fq_codel, 50 -> 5Mbit at 80ms" "l4s-s2-codel-rate-step" "ns-clean-prague-fq_codel-50Mbit-5mbit-80ms_tcp_delivery_with_rtt.svg")  
@@ -268,9 +312,7 @@ In *Figure 13* above, we see a latency spike that has exceeded the fixed scale
 of our plot. However, a review of the
 $(batch_link ".flent.gz file" "l4s-s2-codel-rate-step" "ns-clean-prague-fq_codel-50Mbit-1mbit-80ms.flent.gz")
 shows the maximum TCP RTT to be **4346ms**, and we can see that the spike lasts
-for over **30 seconds**. This behavior is something we need to be aware of
-before introducing an ambiguous definition of the CE signal in the presence of
-[fq_codel deployments](#deployments-of-fq_codel).
+for over **30 seconds**.
 
 See the [Scenario 3](#scenario-3-codel-variable-rate) results, in
 particular for TCP Prague through fq_codel, to look at what happens when
@@ -312,6 +354,89 @@ this point merely to help set the expectation that maintaining strictly low
 delays at bottlenecks comes at the expense of some link utilization for typical
 Internet traffic.
 
+## Risk Assessment
+
+*Risk = Severity * Likelihood*
+
+To estimate the risk of the reported safety problems, this section looks at
+both *Severity* and *Likelihood*.
+
+### Severity
+
+The results reported in
+[Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues)
+indicate a high severity when safety problems occur. Competing flows are
+driven to at or near minimum cwnd. Referring to
+[draft-fairhurst-tsvwg-cc-05](https://datatracker.ietf.org/doc/draft-fairhurst-tsvwg-cc/), Section 3.2:
+
+> Transports MUST avoid inducing flow starvation to other flows that
+> share resources along the path they use.
+
+We have previously defined starvation as "you know it when you see it", a
+definition that seems to apply here.
+
+### Likelihood
+
+The only requirement for the reported
+[unsafety](#unsafety-in-shared-rfc3168-queues) to occur is congestion in a
+shared queue managed by an [RFC3168](https://tools.ietf.org/html/rfc3168) AQM.
+That can happen either in a single queue AQM, or for traffic that ends up
+in the same queue in an FQ AQM, most commonly by
+[tunneled](#tunneled-non-l4s-flows-not-protected-by-fq)
+traffic, but also by hash collision.
+
+The non-L4S flow being dominated *does not need to be ECN capable* in order to
+be affected.
+
+We consider it from the angle of both deployments and observed signaling. While
+the number of deployments suggests the likelihood, the observed signaling on the
+Internet may more directly indicate the likelihood.
+
+#### Deployments
+
+It has been suggested that deployment of single-queue
+[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs is minimal. We have no data
+supporting or denying that.
+
+The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
+kernel since version 3.6 (late 2012) and ships with commercial products and open
+source projects. It has been integrated into the ath9k, ath10k, mt76 and iwl
+WiFi drivers, and is used in Google WiFi and OpenWrt, as well as vendor products
+that depend on OpenWrt, such as Open Mesh products. The Ubiquiti EdgeMAX and
+UniFi products use it for their Smart Queueing feature. The
+[Preseem](https://preseem.com/qoe-optimized-shaping/) platform uses it for
+managing queues in ISP backhauls.
+
+An earlier tsvwg thread on fq_codel deployments is
+[here](https://mailarchive.ietf.org/arch/msg/tsvwg/UyvpwUiNw0obd_EylBBV7kDRIHs/)
+
+Contributions to this section would be useful, including known products,
+distibutions or drivers that mark or do not mark by default.
+
+#### Observed Signaling
+
+A previously shared slide deck on observations of AQM marking is
+[here](https://www.ietf.org/proceedings/interim-2020-maprg-01/slides/slides-interim-2020-maprg-01-sessa-latency-aqm-observations-on-the-internet-01.pdf). This
+reports a "low but growing" level of CE marking.
+
+ECN counter data from a Czech ISP is
+[here](https://github.com/heistp/ecn-counters). While the stateless nature of
+the counters makes a complete interpretation challenging, both incoming and
+outgoing CE marks are observed.
+
+Contributions to this section from various regions and network positions would
+be useful.
+
+### Summary
+
+In a typical [risk matrix](https://en.wikipedia.org/wiki/Risk_matrix), the risk
+of high severity outcomes such as these leave very little tolerance for the
+probability of occurrence. If the reported outcome is not acceptable, then the
+tolerance for likelihood is exactly 0. What we can say for sure is that observed
+AQM signaling on the Internet is *greater than 0*.
+
+TODO key stats to consider
+
 ## Full Results
 
 In the following results, the links are named as follows:
@@ -339,13 +464,23 @@ $(cli_gen_table s3)
 
 $(cli_gen_table s5)
 
+### Scenario 6: RFC3168 AQMs
+
+$(cli_gen_table s6)
+
 ## Appendix
 
 ### Scenario 1 Fairness Table
 
-**D<sub>SS</sub>** Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
+RTT fairness competition, **D<sub>SS</sub>** Delivery rate (throughput) at steady state (mean of 60 second window ending 2 seconds before end of test)
 
 $(<s1_table.md)
+
+### Scenario 6 Fairness Table
+
+RFC3168 AQM tests, **D<sub>SS</sub>** Delivery rate (throughput) at steady state (mean of 40 second window ending 2 seconds before end of test)
+
+$(<s6_steady_state.md)
 
 ### Background
 
@@ -367,14 +502,23 @@ throughput and minimising latency.
 ### Deployments of fq_codel
 
 The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
-kernel since version 3.6 (late 2012) and is now in widespread use in commercial
-routers (e.g. Ubiquiti EdgeMAX and UniFi products), CPE devices and some ISP
-backhauls (see [Preseem](https://preseem.com/qoe-optimized-shaping/)). It has
-also been integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is
+kernel since version 3.6 (late 2012) and ships with some commercial products
+and open source projects.
+
+It has been integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is
 used in Google WiFi and OpenWrt, as well as vendor products that depend on
-OpenWrt, such as Open Mesh products. Since fq_codel uses RFC3168 ECN signaling
-by default, it is important for safety and performance that new congestion
-control mechanisms take existing RFC3168 bottlenecks into account.
+OpenWrt, such as Open Mesh products. The Ubiquiti EdgeMAX and UniFi products use
+it for their Smart Queueing feature. The
+[Preseem](https://preseem.com/qoe-optimized-shaping/) platform uses it for
+managing queues in ISP backhauls.
+
+An earlier tsvwg thread on fq_codel deployments is
+[here](https://mailarchive.ietf.org/arch/msg/tsvwg/UyvpwUiNw0obd_EylBBV7kDRIHs/)
+
+I welcome any contributions to this section, as well as any data on the current
+extent of ECN signaling on the Internet. I have gathered some stateless
+counter data from one ISP in the Czech Republic
+[here](https://github.com/heistp/ecn-counters).
 
 ### Test Setup
 

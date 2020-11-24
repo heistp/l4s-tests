@@ -12,6 +12,8 @@
 # s3-codel-variable-rate: Variable Rates with fq_codel
 # s4-bidir-asym: bi-directional traffic with asymmetric rates
 # s5-tunnel: two-flow competition over tunnels
+# s6-rfc3168: two-flow competition in RFC3168 AQMs
+# s7-oneflow: one flow through fq_codel (for ECN stats)
 #
 
 #
@@ -502,7 +504,7 @@ filename_extra = ${net}-${tunnel}-${vs}-${qdisc}-${bandwidth}-${rtt}
 for_bandwidth = s5_50mbit
 for_tunnel = s5_wireguard, s5_ipfou
 title = net:${net} tunnel:${tunnel} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
-# 01001100, 0x4c (experimental pool, avoiding SCE)
+# 01001100, 0x4c (experimental pool, avoding SCE)
 tos1 = 0x4c
 dscp1 = 0x13
 # 10001100, 0x8c (experimental pool, avoiding SCE)
@@ -516,7 +518,7 @@ s5_midbox_hooks_htb = \
 		bleach_ecn left ${dscp2}\; \
 		qdisc bidir ingress root ${netem_args}\"
 midbox_hooks = ${s5_midbox_hooks_htb}
-net = ns
+net = phys
 
 # S5 L4S
 [Batch::l4s-s5-tunnel]
@@ -548,10 +550,155 @@ netem_args = netem delay 10ms limit 1000000
 
 [Arg::s5_wireguard]
 tunnel = wireguard
-hosts = ${ns_srv_wg_ip}
-#hosts = ${phys_srv_wg_ip}
+#hosts = ${ns_srv_wg_ip}
+hosts = ${phys_srv_wg_ip}
 
 [Arg::s5_ipfou]
 tunnel = ipfou
-hosts = ${ns_srv_fou_ip}
-#hosts = ${phys_srv_fou_ip}
+#hosts = ${ns_srv_fou_ip}
+hosts = ${phys_srv_fou_ip}
+
+
+#############################################################################
+#
+# Scenario 6- Two-flow competition in RFC3168 AQMs
+#
+[Batch::s6-rfc3168]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s6_lowrtt
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s6_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s6_midbox_hooks_noecn = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S6 L4S
+[Batch::l4s-s6-rfc3168]
+inherits = global, l4s, s6-rfc3168
+for_vs = s6_prague-vs-cubic-ecn, \
+	s6_prague-vs-cubic-noecn, \
+	s6_prague-vs-reno-ecn, \
+	s6_prague-vs-reno-noecn
+for_qdisc = s6_fq_codel, \
+	s6_fq_codel_1_20, \
+	s6_pie, \
+	s6_pie_100p_5ms, \
+	s6_red_400000, \
+	s6_red_150000
+
+[Arg::s6_prague-vs-cubic-ecn]
+vs = prague-vs-cubic-ecn
+cc_algos = prague,cubic
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s6_prague-vs-cubic-noecn]
+vs = prague-vs-cubic-noecn
+cc_algos = prague,cubic
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s6_midbox_hooks_noecn}
+
+[Arg::s6_prague-vs-reno-ecn]
+vs = prague-vs-reno-ecn
+cc_algos = prague,reno
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s6_prague-vs-reno-noecn]
+vs = prague-vs-reno-noecn
+cc_algos = prague,reno
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s6_midbox_hooks_noecn}
+
+[Arg::s6_fq_codel]
+qdisc = fq_codel(1q)
+qdisc_args = fq_codel flows 1
+
+[Arg::s6_fq_codel_1_20]
+qdisc = fq_codel(1q,1ms/20ms)
+qdisc_args = fq_codel flows 1 target 1ms interval 20ms
+
+[Arg::s6_pie]
+qdisc = pie
+qdisc_args = pie ecn
+
+[Arg::s6_pie_100p_5ms]
+qdisc = pie(100p/5ms)
+qdisc_args = pie limit 100 target 5ms tupdate 32ms alpha 2 beta 20 ecn
+
+[Arg::s6_red_400000]
+qdisc = red(400000b)
+qdisc_args = red limit 400000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+[Arg::s6_red_150000]
+qdisc = red(150000b)
+qdisc_args = red limit 150000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+# S6 common
+[Arg::s6_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s6_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 7- Single flow through fq_codel
+#
+[Batch::s7-oneflow]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s7_lowrtt, s7_medrtt
+bandwidth = 50Mbit
+filename_extra = ${net}-${cc}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+test_parameters = cc_algo=${cc};
+
+# S7 L4S
+[Batch::l4s-s7-oneflow]
+inherits = global, l4s, s7-oneflow
+for_cc = s7_cubic, s7_reno, s7_prague
+for_qdisc = s7_fq_codel
+
+# S7 args
+[Arg::s7_50mbit]
+bandwidth = 50mbit
+
+[Arg::s7_cubic]
+cc = cubic
+
+[Arg::s7_reno]
+cc = reno
+
+[Arg::s7_prague]
+cc = prague
+
+[Arg::s7_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+[Arg::s7_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s7_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000

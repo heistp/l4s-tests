@@ -115,6 +115,11 @@ plot_vs_title() {
 		prague-vs-cubic) echo "Prague vs CUBIC" ;;
 		prague-vs-reno) echo "Prague vs Reno" ;;
 		prague-vs-prague) echo "Prague vs Prague" ;;
+		prague-vs-cubic-ecn) echo "Prague vs CUBIC(ECN)" ;;
+		prague-vs-cubic-noecn) echo "Prague vs CUBIC(Non-ECN)" ;;
+		prague-vs-reno) echo "Prague vs Reno" ;;
+		prague-vs-reno-ecn) echo "Prague vs Reno(ECN)" ;;
+		prague-vs-reno-noecn) echo "Prague vs Reno(Non-ECN)" ;;
 		reno-vs-reno) echo "Reno vs Reno" ;;
 		bbr-vs-cubic-sce) echo "BBR vs CUBIC-SCE" ;;
 		bbr-vs-prague) echo "BBR vs Prague" ;;
@@ -440,6 +445,39 @@ plot_s5_tcp_delivery_with_rtt() {
 	done
 
 	title="$arch_title: $tunnel tunnel, $vs_title"
+}
+
+# plot_s6_tcp_delivery_with_rtt is the plot visitor for scenario 6
+plot_s6_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
+# plot_s7_tcp_delivery_with_rtt is the plot visitor for scenario 7
+plot_s7_tcp_delivery_with_rtt() {
+	title="$arch_title: Single $cc_title flow through $qdisc, $rtt rtt"
+
+	fl_args+=( "--override-label" "$cc_algo $tput_name" )
+	fl_args+=( "--override-label" "ICMP RTT" )
+	fl_args+=( "--override-label" "TCP RTT" )
 }
 
 
@@ -939,6 +977,12 @@ remote_plot() {
 
 			plot_dir $dir/$arch-s5-tunnel \
 				tcp_delivery_with_rtt s5 || return $?
+
+			plot_dir $dir/$arch-s6-rfc3168 \
+				tcp_delivery_with_rtt s6 || return $?
+
+			plot_dir $dir/$arch-s7-oneflow \
+				tcp_delivery_with_rtt s7 || return $?
 		fi
 	done
 }
@@ -1535,7 +1579,7 @@ bleach_ce() {
 			evq iptables -t mangle -D PREROUTING $args || true
 			;;
 		show*)
-			ev iptables -t mangle -L PREROUTING -n || return $?
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
 			;;
 		esac
 	done
@@ -1549,7 +1593,7 @@ bleach_ecn() {
 
 	local args
 	for dev in $(node_devs $arch $net $node $dir); do
-		args="-i $dev -p tcp -m dscp --dscp $dscp -j TOS --set-tos 0/0x03"
+		args="-m physdev --physdev-in $dev -p tcp -m dscp --dscp $dscp -j TOS --set-tos 0"
 		case $PHASE in
 		setup)
 			ev iptables -t mangle -I PREROUTING $args || return $?
@@ -1558,7 +1602,7 @@ bleach_ecn() {
 			evq iptables -t mangle -D PREROUTING $args || true
 			;;
 		show*)
-			ev iptables -t mangle -L PREROUTING -n || return $?
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
 			;;
 		esac
 	done
@@ -1826,6 +1870,32 @@ cli_gen_table() {
 				fq_codel \
 				$vs \
 				"$(links l4s)"
+			done
+		done
+	}
+
+	# scenario 6
+	s6_emit_table() {
+		local sname="s6-rfc3168"
+		emit_header "RTT | qdisc | vs | ECN | [L4S]($(burl l4s)/)"
+		local tunnel vs
+		for qdisc in fq_codel_1q_ fq_codel_1q_1ms_20ms_ pie pie_100p_5ms_ \
+			red_150000b_ red_400000b_; do
+			for vs in prague-vs-cubic prague-vs-reno; do
+				for ecn in ecn noecn; do
+				local s6_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$vs-$ecn-$qdisc-50Mbit-20ms"
+				local s6_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$vs-$ecn-$qdisc-50Mbit-20ms_tcp_delivery_with_rtt.svg"
+		
+				verify_url "$s6_l4s_url.log"
+				verify_url "$s6_l4s_plot_url"
+		
+				emit_row $tunnel \
+					20ms \
+					$qdisc \
+					$vs \
+					$ecn \
+					"$(links l4s)"
+			  done
 			done
 		done
 	}

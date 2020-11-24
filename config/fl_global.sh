@@ -103,12 +103,13 @@ PUSHOVER_TOKEN=""
 # '#666666',\
 # "
 # color set from 8-color set at colorbrewer2.org
+# but changed FF7F00 to EB7500 for projector use
 COLORS="\
 '#E41A1C',\
 '#377EB8',\
 '#4DAF4A',\
 '#984EA3',\
-'#FF7F00',\
+'#EB7500',\
 '#FFFF33',\
 '#A65628',\
 '#F781BF',\

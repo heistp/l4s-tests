@@ -13,6 +13,8 @@ import (
 	"strings"
 )
 
+const emitRatio bool = true
+
 var qdiscs = [...]string{"dualpi2",
 	"pfifo(1000)",
 	"pfifo(200)",
@@ -109,7 +111,10 @@ func (s sortRunInfo) Less(i, j int) bool {
 	if parseRTT(s[i].rtt1) > parseRTT(s[j].rtt1) {
 		return false
 	}
-	return parseRTT(s[i].rtt2) < parseRTT(s[j].rtt2)
+	if s[i].rtt2 != "" && s[j].rtt2 != "" {
+		return parseRTT(s[i].rtt2) < parseRTT(s[j].rtt2)
+	}
+	return false
 }
 
 func visit(files *[]string, rootDir string) filepath.WalkFunc {
@@ -159,11 +164,11 @@ func jains(vals ...float64) float64 {
 	return (s * s) / (float64(len(vals)) * ss)
 }
 
-func ssDeliveryRate(samples []Sample) float64 {
+func ssDeliveryRate(samples []Sample, ssWin int) float64 {
 	last := samples[len(samples)-1]
 	tlast := last.T
-	tstart := tlast - 62
-	tend := tstart + 60
+	tstart := tlast - float64(ssWin) - 1
+	tend := tstart + float64(ssWin)
 
 	var tdr float64
 	var n int
@@ -177,7 +182,7 @@ func ssDeliveryRate(samples []Sample) float64 {
 	return (tdr / float64(n))
 }
 
-func process(path string) (info runInfo, err error) {
+func process(path string, ssWin int) (info runInfo, err error) {
 	var f *os.File
 	if f, err = os.Open(path); err != nil {
 		return
@@ -210,8 +215,8 @@ func process(path string) (info runInfo, err error) {
 	info.cc1 = ccs[0]
 	info.cc2 = ccs[1]
 
-	info.delivery1 = ssDeliveryRate(flent.RawValues.Upload1)
-	info.delivery2 = ssDeliveryRate(flent.RawValues.Upload2)
+	info.delivery1 = ssDeliveryRate(flent.RawValues.Upload1, ssWin)
+	info.delivery2 = ssDeliveryRate(flent.RawValues.Upload2, ssWin)
 
 	info.jains = jains(info.delivery1, info.delivery2)
 
@@ -227,16 +232,44 @@ func parseRTT(rttstr string) (rtt int) {
 }
 
 func emitHeader() {
-	fmt.Println("| Rate | qdisc | CC1 (RTT) | D<sub>SS</sub>1 | CC2 (RTT) | D<sub>SS</sub>2 | Jain's |")
-	fmt.Println("| ---- | ----- | --------- | --------------- | --------- | ----------------| ------ |")
+	var lastCol string
+	if emitRatio {
+		lastCol = "Ratio"
+	} else {
+		lastCol = "Jain's"
+	}
+
+	fmt.Printf("| Rate | qdisc | CC1 (RTT) | D<sub>SS</sub>1 | CC2 (RTT) | D<sub>SS</sub>2 | %s |\n", lastCol)
+	fmt.Printf("| ---- | ----- | --------- | --------------- | --------- | ----------------| -- |\n")
+}
+
+func ratio(delivery1, delivery2 float64) string {
+	if delivery1 > delivery2 {
+		return fmt.Sprintf("%.0f:1", delivery1/delivery2)
+	}
+	return fmt.Sprintf("1:%.0f", delivery2/delivery1)
 }
 
 func emitRow(r runInfo) {
-	fmt.Printf("| %s | %s | %s(%s) | %.2f | %s(%s) | %.2f | %.3f |\n",
+	var rtt2 string
+	if r.rtt2 != "" {
+		rtt2 = r.rtt2
+	} else {
+		rtt2 = r.rtt1
+	}
+
+	var lastCol string
+	if emitRatio {
+		lastCol = ratio(r.delivery1, r.delivery2)
+	} else {
+		lastCol = fmt.Sprintf("%.3f", r.jains)
+	}
+
+	fmt.Printf("| %s | %s | %s(%s) | %.2f | %s(%s) | %.2f | %s |\n",
 		r.bandwidth, r.qdisc,
 		r.cc1, r.rtt1, r.delivery1,
-		r.cc2, r.rtt2, r.delivery2,
-		r.jains)
+		r.cc2, rtt2, r.delivery2,
+		lastCol)
 }
 
 func fail(err error) {
@@ -245,15 +278,18 @@ func fail(err error) {
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: steady_state <l4s-s1-rttfair results directory>")
+	if len(os.Args) < 3 {
+		fmt.Fprintln(os.Stderr, "usage: steady_state <results directory with .flent.gz files> <steady state trailing window, in seconds>")
 		os.Exit(-1)
 	}
 	dir := os.Args[1]
+	ssWin, err := strconv.Atoi(os.Args[2])
+	if err != nil {
+		fail(err)
+	}
 
 	var files []string
-	err := filepath.Walk(dir, visit(&files, dir))
-	if err != nil {
+	if err = filepath.Walk(dir, visit(&files, dir)); err != nil {
 		fail(err)
 	}
 
@@ -261,7 +297,7 @@ func main() {
 
 	var runInfos []runInfo
 	for _, file := range files {
-		runInfo, err := process(file)
+		runInfo, err := process(file, ssWin)
 		if err != nil {
 			fail(err)
 		}
