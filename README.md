@@ -423,8 +423,12 @@ reports a "low but growing" level of CE marking.
 ECN counter data from a Czech ISP is
 [here](https://github.com/heistp/ecn-counters). While the stateless nature of
 the counters makes a complete interpretation challenging, both incoming and
-outgoing CE marks are observed. Work to improve the quality of that data is
-ongoing.
+outgoing CE marks are observed, however the possibility that some were due
+to incorrect usage of the former ToS byte has not been eliminated. Work to
+improve the quality of that data is ongoing.
+
+On MacOS machines, the command `sudo netstat -sp tcp` may be run to display
+ECN statistics, which includes information on observed ECN signaling.
 
 Contributions to this section from various regions and network positions would
 be useful.
@@ -1021,27 +1025,6 @@ implementing a finer-grained control loop between the network and the transport
 layer.  Hence, instead of oscillating around the ideal (at best), the transport
 can keep the ideal amount of traffic in the network, simultaneously maximising
 throughput and minimising latency.
-
-### Deployments of fq_codel
-
-The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
-kernel since version 3.6 (late 2012) and ships with some commercial products
-and open source projects.
-
-It has been integrated into the ath9k, ath10k, mt76 and iwl WiFi drivers, and is
-used in Google WiFi and OpenWrt, as well as vendor products that depend on
-OpenWrt, such as Open Mesh products. The Ubiquiti EdgeMAX and UniFi products use
-it for their Smart Queueing feature. The
-[Preseem](https://preseem.com/qoe-optimized-shaping/) platform uses it for
-managing queues in ISP backhauls.
-
-An earlier tsvwg thread on fq_codel deployments is
-[here](https://mailarchive.ietf.org/arch/msg/tsvwg/UyvpwUiNw0obd_EylBBV7kDRIHs/)
-
-I welcome any contributions to this section, as well as any data on the current
-extent of ECN signaling on the Internet. I have gathered some stateless
-counter data from one ISP in the Czech Republic
-[here](https://github.com/heistp/ecn-counters).
 
 ### Test Setup
 
