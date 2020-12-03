@@ -373,7 +373,7 @@ driven to at or near minimum cwnd. Referring to
 > share resources along the path they use.
 
 We have previously defined starvation as "you know it when you see it", a
-definition that seems to apply here.
+definition that applies here.
 
 ### Likelihood
 
@@ -402,10 +402,11 @@ The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
 kernel since version 3.6 (late 2012) and ships with commercial products and open
 source projects. It has been integrated into the ath9k, ath10k, mt76 and iwl
 WiFi drivers, and is used in Google WiFi and OpenWrt, as well as vendor products
-that depend on OpenWrt, such as Open Mesh products. The Ubiquiti EdgeMAX and
-UniFi products use it for their Smart Queueing feature. The
+that depend on OpenWrt, such as Open Mesh products. OpenWrt uses fq_codel in the
+supported WiFi drivers by default, and Open Mesh products do as well. The
+Ubiquiti EdgeMAX and UniFi products use it for their Smart Queueing feature. The
 [Preseem](https://preseem.com/qoe-optimized-shaping/) platform uses it for
-managing queues in ISP backhauls.
+managing queues in ISP backhauls. 
 
 An earlier tsvwg thread on fq_codel deployments is
 [here](https://mailarchive.ietf.org/arch/msg/tsvwg/UyvpwUiNw0obd_EylBBV7kDRIHs/)
@@ -422,7 +423,8 @@ reports a "low but growing" level of CE marking.
 ECN counter data from a Czech ISP is
 [here](https://github.com/heistp/ecn-counters). While the stateless nature of
 the counters makes a complete interpretation challenging, both incoming and
-outgoing CE marks are observed.
+outgoing CE marks are observed. Work to improve the quality of that data is
+ongoing.
 
 Contributions to this section from various regions and network positions would
 be useful.
@@ -434,8 +436,6 @@ of high severity outcomes such as these leave very little tolerance for the
 probability of occurrence. If the reported outcome is not acceptable, then the
 tolerance for likelihood is exactly 0. What we can say for sure is that observed
 AQM signaling on the Internet is *greater than 0*.
-
-TODO key stats to consider
 
 ## Full Results
 

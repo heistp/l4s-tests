@@ -402,10 +402,11 @@ The [fq_codel](https://tools.ietf.org/html/rfc8290) qdisc has been in the Linux
 kernel since version 3.6 (late 2012) and ships with commercial products and open
 source projects. It has been integrated into the ath9k, ath10k, mt76 and iwl
 WiFi drivers, and is used in Google WiFi and OpenWrt, as well as vendor products
-that depend on OpenWrt, such as Open Mesh products. The Ubiquiti EdgeMAX and
-UniFi products use it for their Smart Queueing feature. The
+that depend on OpenWrt, such as Open Mesh products. OpenWrt uses fq_codel in the
+supported WiFi drivers by default, and Open Mesh products do as well. The
+Ubiquiti EdgeMAX and UniFi products use it for their Smart Queueing feature. The
 [Preseem](https://preseem.com/qoe-optimized-shaping/) platform uses it for
-managing queues in ISP backhauls.
+managing queues in ISP backhauls. 
 
 An earlier tsvwg thread on fq_codel deployments is
 [here](https://mailarchive.ietf.org/arch/msg/tsvwg/UyvpwUiNw0obd_EylBBV7kDRIHs/)
