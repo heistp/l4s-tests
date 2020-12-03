@@ -373,7 +373,7 @@ driven to at or near minimum cwnd. Referring to
 > share resources along the path they use.
 
 We have previously defined starvation as "you know it when you see it", a
-definition that seems to apply here.
+definition that applies here.
 
 ### Likelihood
 
@@ -422,7 +422,8 @@ reports a "low but growing" level of CE marking.
 ECN counter data from a Czech ISP is
 [here](https://github.com/heistp/ecn-counters). While the stateless nature of
 the counters makes a complete interpretation challenging, both incoming and
-outgoing CE marks are observed.
+outgoing CE marks are observed. Work to improve the quality of that data is
+ongoing.
 
 Contributions to this section from various regions and network positions would
 be useful.
@@ -434,8 +435,6 @@ of high severity outcomes such as these leave very little tolerance for the
 probability of occurrence. If the reported outcome is not acceptable, then the
 tolerance for likelihood is exactly 0. What we can say for sure is that observed
 AQM signaling on the Internet is *greater than 0*.
-
-TODO key stats to consider
 
 ## Full Results
 
