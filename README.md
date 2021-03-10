@@ -91,6 +91,8 @@ packets for these flows instead of signaling CE.
 See the [Risk Assessment](#risk-assessment) section for a further discussion
 on this issue.
 
+#### Harm to Steady-State Throughput
+
 *Figure 1* shows Prague vs CUBIC(Non-ECN) through a shared fq_codel queue. Note
 that here we use the parameter `flows 1` for fq_codel, which simulates traffic
 in a shared queue. That happens for
@@ -117,6 +119,62 @@ steady-state throughput ratios of each run.
 
 See the [Scenario 6](#scenario-6-rfc3168-aqms) results for fq_codel, PIE and
 RED, each with two different common configurations.
+
+Although we do not have baseline runs for CUBIC alone, since its steady-state
+throughput is in the neighborhood of 45Mbps, and drops to around 1.5Mbps in
+competition with Prague, harm is in the neighborhood of:
+
+(45 - 1.5) / 45 = **0.966**
+
+#### Harm to Flow Completion Time
+
+In addition to the harm to steady-state throughput, there is also harm to the
+the completion time of short flows. Following are results of a run of
+[ccafct](../ccafct), using TCP CUBIC and TCP Prague, and the parameters shown
+below. For this workload of flows with 5th percentile length 64K, and 95th
+percentile length 2M, harm is significantly higher for Prague than CUBIC,
+across RTTs.
+
+```
+Test Parameters:
+----------------
+CCAs under test:  cubic, prague
+RTTs:             10ms, 20ms, 40ms, 80ms, 160ms
+Bandwidth:        50Mbps
+Qdisc:            fq_codel flows 1
+Slow start delay: 20s
+
+FCT Workload Parameters:
+------------------------
+Server URL:        localhost:8188
+CCA:               cubic
+Duration:          3m0s
+Flows:             900
+Mean arrival time: 200ms
+Est. bandwidth:    25.83Mbps
+Flow lengths:      
+|- P5:             65536
+|- Mean:           645683
+|- P95:            2097152
+
+RTT    CCA     GeoMean (Harm)    Median (Harm)     P95 (Harm)
+---    ---     --------------    -------------     ----------
+10ms   -       176.2ms           154.3ms           1061.3ms
+10ms   cubic   339.3ms (0.481)   314.9ms (0.510)   2002.7ms (0.470)
+10ms   prague  1171.3ms (0.850)  1131.7ms (0.864)  7305.2ms (0.855)
+20ms   -       243.0ms           211.5ms           1155.3ms
+20ms   cubic   376.6ms (0.355)   351.7ms (0.399)   1986.0ms (0.418)
+20ms   prague  1394.1ms (0.826)  1385.3ms (0.847)  8454.8ms (0.863)
+40ms   -       369.2ms           317.8ms           1634.7ms
+40ms   cubic   475.7ms (0.224)   423.9ms (0.250)   2179.9ms (0.250)
+40ms   prague  1643.8ms (0.775)  1637.7ms (0.806)  9879.3ms (0.835)
+80ms   -       599.9ms           554.5ms           2135.6ms
+80ms   cubic   906.7ms (0.338)   846.9ms (0.345)   3709.4ms (0.424)
+80ms   prague  2384.8ms (0.748)  2228.4ms (0.751)  12159.9ms (0.824)
+160ms  -       976.6ms           976.4ms           3465.1ms
+160ms  cubic   1127.7ms (0.134)  1043.2ms (0.064)  4207.8ms (0.177)
+160ms  prague  2471.9ms (0.605)  2174.7ms (0.551)  14418.8ms (0.760)
+```
 
 ### Tunneled Non-L4S Flows Not Protected by FQ
 
