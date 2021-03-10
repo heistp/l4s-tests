@@ -14,6 +14,7 @@
 # s5-tunnel: two-flow competition over tunnels
 # s6-rfc3168: two-flow competition in RFC3168 AQMs
 # s7-oneflow: one flow through fq_codel (for ECN stats)
+# s8-rfc3168-second: two-flow competition, RFC3168 AQMs, Prague flow first
 #
 
 #
@@ -700,5 +701,114 @@ rtt = 20ms
 netem_args = netem delay 10ms limit 1000000
 
 [Arg::s7_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 8- Prague vs CUBIC/Reno in RFC3168 AQMs, Prague starts first
+#
+[Batch::s8-rfc3168-second]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s8_lowrtt, s8_medrtt
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s8_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s8_midbox_hooks_noecn = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S8 L4S
+[Batch::l4s-s8-rfc3168-second]
+inherits = global, l4s, s8-rfc3168-second
+for_vs = s8_prague-vs-cubic-ecn, \
+	s8_prague-vs-cubic-noecn, \
+	s8_prague-vs-reno-ecn, \
+	s8_prague-vs-reno-noecn
+
+#for_qdisc = s8_fq_codel, \
+#	s8_fq_codel_1_20, \
+#	s8_pie, \
+#	s8_pie_100p_5ms, \
+#	s8_red_400000, \
+#	s8_red_150000
+
+for_qdisc = s8_fq_codel, \
+	s8_pie, \
+	s8_red_400000
+
+[Arg::s8_prague-vs-cubic-ecn]
+vs = prague-vs-cubic-ecn
+cc_algos = prague,cubic
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s8_prague-vs-cubic-noecn]
+vs = prague-vs-cubic-noecn
+cc_algos = prague,cubic
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s8_midbox_hooks_noecn}
+
+[Arg::s8_prague-vs-reno-ecn]
+vs = prague-vs-reno-ecn
+cc_algos = prague,reno
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s8_prague-vs-reno-noecn]
+vs = prague-vs-reno-noecn
+cc_algos = prague,reno
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s8_midbox_hooks_noecn}
+
+[Arg::s8_fq_codel]
+qdisc = fq_codel(1q)
+qdisc_args = fq_codel flows 1
+
+[Arg::s8_fq_codel_1_20]
+qdisc = fq_codel(1q,1ms/20ms)
+qdisc_args = fq_codel flows 1 target 1ms interval 20ms
+
+[Arg::s8_pie]
+qdisc = pie
+qdisc_args = pie ecn
+
+[Arg::s8_pie_100p_5ms]
+qdisc = pie(100p/5ms)
+qdisc_args = pie limit 100 target 5ms tupdate 32ms alpha 2 beta 20 ecn
+
+[Arg::s8_red_400000]
+qdisc = red(400000b)
+qdisc_args = red limit 400000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+[Arg::s8_red_150000]
+qdisc = red(150000b)
+qdisc_args = red limit 150000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+# S8 common
+[Arg::s8_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s8_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s8_medrtt]
 rtt = 80ms
 netem_args = netem delay 40ms limit 1000000

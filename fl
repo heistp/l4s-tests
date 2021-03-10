@@ -480,6 +480,30 @@ plot_s7_tcp_delivery_with_rtt() {
 	fl_args+=( "--override-label" "TCP RTT" )
 }
 
+# plot_s8_tcp_delivery_with_rtt is the plot visitor for scenario 8
+plot_s8_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
 
 #############################################################################
 #
@@ -730,13 +754,13 @@ ns_setup() {
 	echo $NS_SRV_WG_PRIV > /tmp/ns_srv_wg_priv
 	nsx srv wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_srv_wg_priv peer "$NS_CLI_WG_PUB" allowed-ips $NS_CLI_WG_IP endpoint $NS_CLI_IP:$NS_WG_PORT
 	nsx srv ip link set up dev $NS_WG_IFACE
-	# srv ipfou
-	nsx srv ip fou add port $NS_FOU_PORT ipproto 4
-	nsx srv ip link add name $NS_FOU_IFACE type ipip \
-		remote $NS_CLI_IP local $NS_SRV_IP ttl 225 \
-		encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
-	nsx srv ip addr add $NS_SRV_FOU_NET dev $NS_FOU_IFACE
-	nsx srv ip link set $NS_FOU_IFACE up
+	# srv ipfou (unused now)
+	#nsx srv ip fou add port $NS_FOU_PORT ipproto 4
+	#nsx srv ip link add name $NS_FOU_IFACE type ipip \
+	#	remote $NS_CLI_IP local $NS_SRV_IP ttl 225 \
+	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	#nsx srv ip addr add $NS_SRV_FOU_NET dev $NS_FOU_IFACE
+	#nsx srv ip link set $NS_FOU_IFACE up
 
 	if [[ $NS_OFFLOADS == off ]]; then
 		set_offloads $NS_SRV_LEFT off srv || return $?
@@ -786,13 +810,13 @@ ns_setup() {
 	echo $NS_CLI_WG_PRIV > /tmp/ns_cli_wg_priv
 	sudo wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_cli_wg_priv peer "$NS_SRV_WG_PUB" allowed-ips $NS_SRV_WG_IP endpoint $NS_SRV_IP:$NS_WG_PORT
 	sudo ip link set $NS_WG_IFACE up
-	# cli ipfou
-	sudo ip fou add port $NS_FOU_PORT ipproto 4
-	sudo ip link add name $NS_FOU_IFACE type ipip \
-		remote $NS_SRV_IP local $NS_CLI_IP ttl 225 \
-		encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
-	sudo ip addr add $NS_CLI_FOU_NET dev $NS_FOU_IFACE
-	sudo ip link set $NS_FOU_IFACE up
+	# cli ipfou (unused now)
+	#sudo ip fou add port $NS_FOU_PORT ipproto 4
+	#sudo ip link add name $NS_FOU_IFACE type ipip \
+	#	remote $NS_SRV_IP local $NS_CLI_IP ttl 225 \
+	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	#sudo ip addr add $NS_CLI_FOU_NET dev $NS_FOU_IFACE
+	#sudo ip link set $NS_FOU_IFACE up
 
 	# start netserver (with -d for debug so it doesn't change perms on /dev/null)
 	if ! command -v netserver >&/dev/null; then
@@ -821,8 +845,10 @@ ns_teardown() {
 
 	# delete wireguard in default namespace
 	sudo ip link delete $NS_WG_IFACE type wireguard
-	sudo ip link delete $NS_FOU_IFACE type ipip
-	sudo ip fou delete port $NS_FOU_PORT ipproto 4
+
+	# delete fou (unused now)
+	#sudo ip link delete $NS_FOU_IFACE type ipip
+	#sudo ip fou delete port $NS_FOU_PORT ipproto 4
 }
 
 #############################################################################
@@ -841,6 +867,21 @@ remote_run_flent() {
 
 	local fl_args=""
 	local bcount=0
+
+	# check kernel version
+	check_kernel_version() {
+		local kvar=${arch^^}_KERNEL_VERSION
+
+		if [[ ${!kvar} ]]; then
+			local kver=$(cat /proc/version)
+			if [[ $kver != ${!kvar} ]]; then
+				>&2 echo "kernel version mismatch"
+				>&2 echo "expected: '${!kvar}'"
+				>&2 echo "found: '$kver'"
+				return 1
+			fi
+		fi
+	}
 
 	# cleans up after flent run
 	run_flent_cleanup() {
@@ -867,6 +908,8 @@ remote_run_flent() {
 	# run flent if any batches matched
 	if (( bcount > 0 )); then
 		trap run_flent_cleanup EXIT
+
+		check_kernel_version || return $?
 
 		ns_setup $arch || return $?
 	
@@ -983,6 +1026,9 @@ remote_plot() {
 
 			plot_dir $dir/$arch-s7-oneflow \
 				tcp_delivery_with_rtt s7 || return $?
+
+			plot_dir $dir/$arch-s8-rfc3168-second \
+				tcp_delivery_with_rtt s8 || return $?
 		fi
 	done
 }

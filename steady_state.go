@@ -120,7 +120,7 @@ func (s sortRunInfo) Less(i, j int) bool {
 func visit(files *[]string, rootDir string) filepath.WalkFunc {
 	return func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			fail(err)
+			failErr(err)
 		}
 		if strings.HasSuffix(info.Name(), ".flent.gz") ||
 			strings.HasSuffix(info.Name(), ".flent") {
@@ -226,7 +226,7 @@ func process(path string, ssWin int) (info runInfo, err error) {
 func parseRTT(rttstr string) (rtt int) {
 	var err error
 	if rtt, err = strconv.Atoi(rttstr[:len(rttstr)-2]); err != nil {
-		fail(err)
+		failErr(err)
 	}
 	return
 }
@@ -272,7 +272,7 @@ func emitRow(r runInfo) {
 		lastCol)
 }
 
-func fail(err error) {
+func failErr(err error) {
 	fmt.Fprintf(os.Stderr, "error: %s\n", err)
 	os.Exit(-1)
 }
@@ -285,12 +285,12 @@ func main() {
 	dir := os.Args[1]
 	ssWin, err := strconv.Atoi(os.Args[2])
 	if err != nil {
-		fail(err)
+		failErr(err)
 	}
 
 	var files []string
 	if err = filepath.Walk(dir, visit(&files, dir)); err != nil {
-		fail(err)
+		failErr(err)
 	}
 
 	emitHeader()
@@ -299,7 +299,7 @@ func main() {
 	for _, file := range files {
 		runInfo, err := process(file, ssWin)
 		if err != nil {
-			fail(err)
+			failErr(err)
 		}
 		runInfos = append(runInfos, runInfo)
 	}
