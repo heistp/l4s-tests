@@ -11,6 +11,8 @@ Jonathan Morton
 2. [Key Findings](#key-findings)
 3. [Elaboration on Key Findings](#elaboration-on-key-findings)
    1. [Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues)
+      1. [Harm to Steady-State Throughput](#harm-to-steady-state-throughput)
+      1. [Harm to Flow Completion Time](#harm-to-flow-completion-time)
    2. [Tunneled Non-L4S Flows Not Protected by FQ](#tunneled-non-l4s-flows-not-protected-by-fq)
    3. [Network Bias](#network-bias)
    4. [RTT Unfairness](#rtt-unfairness)
