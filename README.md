@@ -132,10 +132,10 @@ competition with Prague, harm is in the neighborhood of:
 
 In addition to the harm to steady-state throughput, there is also harm to the
 the completion time of short flows. Following are results of a run of
-[ccafct](../ccafct), using TCP CUBIC and TCP Prague, and the parameters shown
-below. For this workload of flows with 5th percentile length 64K, and 95th
-percentile length 2M, harm is significantly higher for Prague than CUBIC,
-across RTTs.
+[ccafct](https://github.com/heistp/ccafct), using TCP CUBIC and TCP Prague, and
+the parameters shown below. For this workload of flows with 5th percentile
+length 64K, and 95th percentile length 2M, harm is significantly higher for
+Prague than CUBIC, across RTTs.
 
 ```
 Test Parameters:
