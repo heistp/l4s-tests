@@ -1,4 +1,4 @@
-#!/bin/bash	
+#!/bin/bash
 
 #############################################################################
 #
@@ -504,6 +504,30 @@ plot_s8_tcp_delivery_with_rtt() {
 	title="$arch_title: $vs_title in $qdisc"
 }
 
+# plot_s9_tcp_delivery_with_rtt is the plot visitor for scenario 9
+plot_s9_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $tunnel tunnel"
+}
+
 
 #############################################################################
 #
@@ -719,6 +743,58 @@ split() {
 
 #############################################################################
 #
+# IPSEC SUPPORT FUNCTIONS
+#
+#
+setup_ipsec() {
+	local ns="$1"; shift
+	local dev="$1"; shift
+	local src="$1"; shift
+	local dst="$1"; shift
+	local local="$1"; shift
+	local remote="$1"; shift
+
+	nsx $ns ip xfrm state flush
+	nsx $ns ip xfrm policy flush
+
+	nsx $ns ip xfrm state add src $src dst $dst proto esp \
+		spi $NS_IPSEC_ID reqid $NS_IPSEC_REQID \
+		mode tunnel auth sha256 $NS_IPSEC_KEY1 enc aes $NS_IPSEC_KEY2 \
+	  replay-window 32
+
+	nsx $ns ip xfrm state add src $dst dst $src proto esp \
+		spi $NS_IPSEC_ID reqid $NS_IPSEC_REQID \
+		mode tunnel auth sha256 $NS_IPSEC_KEY1 enc aes $NS_IPSEC_KEY2 \
+		replay-window 32
+
+	nsx $ns ip xfrm policy add src $local dst $remote \
+		dir out tmpl src $src dst $dst proto esp \
+		reqid $NS_IPSEC_REQID mode tunnel
+
+	nsx $ns ip xfrm policy add src $remote dst $local \
+		dir in tmpl src $dst dst $src proto esp \
+		reqid $NS_IPSEC_REQID mode tunnel
+
+	nsx $ns ip link add $NS_IPSEC_IFACE type xfrm dev $dev
+	nsx $ns ip addr add $local dev $NS_IPSEC_IFACE
+	nsx $ns ip link set up dev $NS_IPSEC_IFACE
+	nsx $ns ip route add $remote dev $dev src $local
+}
+
+teardown_ipsec() {
+	local ns="$1"; shift
+	local dev="$1"; shift
+	local local="$1"; shift
+	local remote="$1"; shift
+
+	nsx $ns ip xfrm state flush
+	nsx $ns ip xfrm policy flush
+	nsx $ns ip route del $remote dev $dev src $local
+	nsx $ns ip link delete $NS_IPSEC_IFACE
+}
+
+#############################################################################
+#
 # NAMESPACES FUNCTIONS
 #
 #
@@ -731,7 +807,7 @@ nsx() {
 
 	# client is run in default namespace
 	if [[ $ns == cli ]]; then
-		$args
+		sudo $args
 	else
 		sudo ip netns exec $ns $args
 	fi
@@ -748,19 +824,25 @@ ns_setup() {
 	sudo ip link set dev $NS_SRV_LEFT netns srv || return $?
 	nsx srv ip addr add $NS_SRV_NET dev $NS_SRV_LEFT || return $?
 	nsx srv ip link set $NS_SRV_LEFT up || return $?
+
 	# srv wireguard
 	nsx srv ip link add dev $NS_WG_IFACE type wireguard
 	nsx srv ip addr add dev $NS_WG_IFACE $NS_SRV_WG_NET peer $NS_CLI_WG_IP
 	echo $NS_SRV_WG_PRIV > /tmp/ns_srv_wg_priv
 	nsx srv wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_srv_wg_priv peer "$NS_CLI_WG_PUB" allowed-ips $NS_CLI_WG_IP endpoint $NS_CLI_IP:$NS_WG_PORT
 	nsx srv ip link set up dev $NS_WG_IFACE
-	# srv ipfou (unused now)
+
+	## srv ipfou (unused now)
 	#nsx srv ip fou add port $NS_FOU_PORT ipproto 4
 	#nsx srv ip link add name $NS_FOU_IFACE type ipip \
 	#	remote $NS_CLI_IP local $NS_SRV_IP ttl 225 \
 	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
 	#nsx srv ip addr add $NS_SRV_FOU_NET dev $NS_FOU_IFACE
 	#nsx srv ip link set $NS_FOU_IFACE up
+
+	# srv ipsec
+	setup_ipsec srv $NS_SRV_LEFT $NS_SRV_IP $NS_CLI_IP \
+		$NS_SRV_IPSEC_IP $NS_CLI_IPSEC_IP
 
 	if [[ $NS_OFFLOADS == off ]]; then
 		set_offloads $NS_SRV_LEFT off srv || return $?
@@ -804,12 +886,14 @@ ns_setup() {
 	elif [[ $arch == "l4s" ]]; then
 		sudo sysctl -qw net.ipv4.tcp_ecn=3 || return $? >/dev/null
 	fi
+
 	# cli wireguard
 	sudo ip link add $NS_WG_IFACE type wireguard
 	sudo ip addr add $NS_CLI_WG_NET dev $NS_WG_IFACE
 	echo $NS_CLI_WG_PRIV > /tmp/ns_cli_wg_priv
 	sudo wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_cli_wg_priv peer "$NS_SRV_WG_PUB" allowed-ips $NS_SRV_WG_IP endpoint $NS_SRV_IP:$NS_WG_PORT
 	sudo ip link set $NS_WG_IFACE up
+
 	# cli ipfou (unused now)
 	#sudo ip fou add port $NS_FOU_PORT ipproto 4
 	#sudo ip link add name $NS_FOU_IFACE type ipip \
@@ -817,6 +901,10 @@ ns_setup() {
 	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
 	#sudo ip addr add $NS_CLI_FOU_NET dev $NS_FOU_IFACE
 	#sudo ip link set $NS_FOU_IFACE up
+
+	# cli ipsec
+	setup_ipsec cli $NS_CLI_RIGHT $NS_CLI_IP $NS_SRV_IP \
+		$NS_CLI_IPSEC_IP $NS_SRV_IPSEC_IP
 
 	# start netserver (with -d for debug so it doesn't change perms on /dev/null)
 	if ! command -v netserver >&/dev/null; then
@@ -849,6 +937,9 @@ ns_teardown() {
 	# delete fou (unused now)
 	#sudo ip link delete $NS_FOU_IFACE type ipip
 	#sudo ip fou delete port $NS_FOU_PORT ipproto 4
+
+	# delete ipsec in default namespace
+	teardown_ipsec cli $NS_CLI_RIGHT $NS_CLI_IPSEC_IP $NS_SRV_IPSEC_IP
 }
 
 #############################################################################
@@ -1029,6 +1120,9 @@ remote_plot() {
 
 			plot_dir $dir/$arch-s8-rfc3168-second \
 				tcp_delivery_with_rtt s8 || return $?
+
+			plot_dir $dir/$arch-s9-tunnel-reordering \
+				tcp_delivery_with_rtt s9 || return $?
 		fi
 	done
 }

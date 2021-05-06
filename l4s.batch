@@ -15,6 +15,7 @@
 # s6-rfc3168: two-flow competition in RFC3168 AQMs
 # s7-oneflow: one flow through fq_codel (for ECN stats)
 # s8-rfc3168-second: two-flow competition, RFC3168 AQMs, Prague flow first
+# s9-tunnel-reordering: two-flow competition through IPsec w/ replay protection
 #
 
 #
@@ -73,6 +74,7 @@ net = ns
 ns_srv_ip = 10.9.9.2
 ns_srv_wg_ip = 10.9.99.2
 ns_srv_fou_ip = 10.9.98.2
+ns_srv_ipsec_ip = 10.9.97.2
 hosts = ${ns_srv_ip}
 # phys settings
 phys_srv_ip = ts2
@@ -812,3 +814,91 @@ netem_args = netem delay 10ms limit 1000000
 [Arg::s8_medrtt]
 rtt = 80ms
 netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 9- TCP 2up test through IPsec with replay protection (re-ordering)
+#
+[Batch::s9-tunnel-reordering]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s9_lowrtt
+# replay-window must be modified in the fl script manually for each run, and
+# the label below changed to 0, 32, 64, 128 and 256
+for_replay = s9_replay_32
+filename_extra = ${net}-${tunnel}-${replay_name}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s9_100mbit
+for_tunnel = s9_ipsec
+for_vs = s9_cubic_prague
+title = net:${net} tunnel:${tunnel} replay-window:${replay_window} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+test_parameters = cc_algos=${cc_algos};
+s9_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+midbox_hooks = ${s9_midbox_hooks_htb}
+
+# S9 L4S
+[Batch::l4s-s9-tunnel-reordering]
+inherits = global, l4s, s9-tunnel-reordering
+for_qdisc = s9_dualpi2
+
+[Arg::s9_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+# S9 common
+[Arg::s9_100mbit]
+bandwidth = 100Mbit
+
+[Arg::s9_200mbit]
+bandwidth = 200Mbit
+
+[Arg::s9_500mbit]
+bandwidth = 500Mbit
+
+[Arg::s9_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s9_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+[Arg::s9_cubic]
+vs = cubic-vs-cubic
+cc_algos = cubic,cubic
+
+[Arg::s9_cubic_prague]
+vs = cubic-vs-prague
+cc_algos = cubic,prague
+
+[Arg::s9_ipsec]
+tunnel = ipsec
+hosts = ${ns_srv_ipsec_ip}
+
+[Arg::s9_replay_0]
+replay_window = 0
+replay_name = replay-win-0
+
+[Arg::s9_replay_32]
+replay_window = 32
+replay_name = replay-win-32
+
+[Arg::s9_replay_64]
+replay_window = 64
+replay_name = replay-win-64
+
+[Arg::s9_replay_128]
+replay_window = 128
+replay_name = replay-win-128
+
+[Arg::s9_replay_256]
+replay_window = 256
+replay_name = replay-win-256
+
+[Arg::s9_wireguard]
+tunnel = wireguard
+hosts = ${ns_srv_wg_ip}

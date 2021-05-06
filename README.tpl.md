@@ -16,6 +16,7 @@ Jonathan Morton
    4. [RTT Unfairness](#rtt-unfairness)
    5. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
    6. [Burst Intolerance](#burst-intolerance)
+   7. [Dropped Packets for Tunnels with Replay Protection Enabled](#dropped-packets-for-tunnels-with-replay-protection-enabled)
 4. [Risk Assessment](#risk-assessment)
    1. [Severity](#severity)
    2. [Likelihood](#likelihood)
@@ -72,6 +73,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 6. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
+7. 
 
 ## Elaboration on Key Findings
 
@@ -353,6 +355,39 @@ prefer increased utilization at the expense of some intra-flow delay. We raise
 this point merely to help set the expectation that maintaining strictly low
 delays at bottlenecks comes at the expense of some link utilization for typical
 Internet traffic.
+
+### Dropped Packets for Tunnels with Replay Protection Enabled
+
+Tunnels that use windowed protection against replay attacks may drop packets
+that arrive outside the protection window after they traverse the DualPI2 C
+queue. This can cause reduced performance for tunneled, non-L4S traffic.
+
+$(plot_inline "L4S: ipsec tunnel (32 packet replay window)" "l4s-s9-tunnel-reordering" "ns-ipsec-replay-win-32-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg")  
+*Figure 16*
+
+In *Figure 16* above we see two-flow competition between CUBIC and Prague
+through an IPsec tunnel with \`replay-window\` set at 32 packets, the default in
+some tunnel implementations. The CUBIC flow has reduced throughput relative to
+what's expected. In *Figure 17*, replay protection has been disabled, showing
+the normal performance under these conditions.
+
+$(plot_inline "L4S: ipsec tunnel (no replay window)" "l4s-s9-tunnel-reordering" "ns-ipsec-replay-win-0-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg")  
+*Figure 17*
+
+To fix this, tunnels traversing a DualPI2 bottleneck must be reconfigured with a
+replay window that's at least large enough to allow for the number of packets
+that can arrive during the maximum expected difference in sojourn times between
+the L and C queues. As an example, for typical traffic at 100Mbps with a 1500
+byte MTU, around 333 packets pass in 40ms (100000000 / 8 / 1500 / (1000 / 40)).
+
+$(plot_inline "L4S: ipsec tunnel (256 packet replay window)" "l4s-s9-tunnel-reordering" "ns-ipsec-replay-win-256-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg")  
+*Figure 18*
+
+In *Figure 18*, a replay window of 256 packets is used, which may be sufficient
+in this case. Note that some tunnels may only be configured with replay window
+sizes that are a power of 2.
+
+Thanks to Sebastian Moeller for reporting this issue.
 
 ## Risk Assessment
 

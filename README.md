@@ -11,13 +11,12 @@ Jonathan Morton
 2. [Key Findings](#key-findings)
 3. [Elaboration on Key Findings](#elaboration-on-key-findings)
    1. [Unsafety in Shared RFC3168 Queues](#unsafety-in-shared-rfc3168-queues)
-      1. [Harm to Steady-State Throughput](#harm-to-steady-state-throughput)
-      1. [Harm to Flow Completion Time](#harm-to-flow-completion-time)
    2. [Tunneled Non-L4S Flows Not Protected by FQ](#tunneled-non-l4s-flows-not-protected-by-fq)
    3. [Network Bias](#network-bias)
    4. [RTT Unfairness](#rtt-unfairness)
    5. [Intra-flow Latency Spikes](#intra-flow-latency-spikes)
    6. [Burst Intolerance](#burst-intolerance)
+   7. [Dropped Packets for Tunnels with Replay Protection Enabled](#dropped-packets-for-tunnels-with-replay-protection-enabled)
 4. [Risk Assessment](#risk-assessment)
    1. [Severity](#severity)
    2. [Likelihood](#likelihood)
@@ -74,6 +73,7 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 6. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
+7. 
 
 ## Elaboration on Key Findings
 
@@ -92,8 +92,6 @@ packets for these flows instead of signaling CE.
 
 See the [Risk Assessment](#risk-assessment) section for a further discussion
 on this issue.
-
-#### Harm to Steady-State Throughput
 
 *Figure 1* shows Prague vs CUBIC(Non-ECN) through a shared fq_codel queue. Note
 that here we use the parameter `flows 1` for fq_codel, which simulates traffic
@@ -121,62 +119,6 @@ steady-state throughput ratios of each run.
 
 See the [Scenario 6](#scenario-6-rfc3168-aqms) results for fq_codel, PIE and
 RED, each with two different common configurations.
-
-Although we do not have baseline runs for CUBIC alone, since its steady-state
-throughput is in the neighborhood of 45Mbps, and drops to around 1.5Mbps in
-competition with Prague, harm is in the neighborhood of:
-
-(45 - 1.5) / 45 = **0.966**
-
-#### Harm to Flow Completion Time
-
-In addition to the harm to steady-state throughput, there is also harm to the
-the completion time of short flows. Following are results of a run of
-[ccafct](https://github.com/heistp/ccafct), using TCP CUBIC and TCP Prague, and
-the parameters shown below. For this workload of flows with 5th percentile
-length 64K, and 95th percentile length 2M, harm is significantly higher for
-Prague than CUBIC, across RTTs.
-
-```
-Test Parameters:
-----------------
-CCAs under test:  cubic, prague
-RTTs:             10ms, 20ms, 40ms, 80ms, 160ms
-Bandwidth:        50Mbps
-Qdisc:            fq_codel flows 1
-Slow start delay: 20s
-
-FCT Workload Parameters:
-------------------------
-Server URL:        localhost:8188
-CCA:               cubic
-Duration:          3m0s
-Flows:             900
-Mean arrival time: 200ms
-Est. bandwidth:    25.83Mbps
-Flow lengths:      
-|- P5:             65536
-|- Mean:           645683
-|- P95:            2097152
-
-RTT    CCA     GeoMean (Harm)    Median (Harm)     P95 (Harm)
----    ---     --------------    -------------     ----------
-10ms   -       176.2ms           154.3ms           1061.3ms
-10ms   cubic   339.3ms (0.481)   314.9ms (0.510)   2002.7ms (0.470)
-10ms   prague  1171.3ms (0.850)  1131.7ms (0.864)  7305.2ms (0.855)
-20ms   -       243.0ms           211.5ms           1155.3ms
-20ms   cubic   376.6ms (0.355)   351.7ms (0.399)   1986.0ms (0.418)
-20ms   prague  1394.1ms (0.826)  1385.3ms (0.847)  8454.8ms (0.863)
-40ms   -       369.2ms           317.8ms           1634.7ms
-40ms   cubic   475.7ms (0.224)   423.9ms (0.250)   2179.9ms (0.250)
-40ms   prague  1643.8ms (0.775)  1637.7ms (0.806)  9879.3ms (0.835)
-80ms   -       599.9ms           554.5ms           2135.6ms
-80ms   cubic   906.7ms (0.338)   846.9ms (0.345)   3709.4ms (0.424)
-80ms   prague  2384.8ms (0.748)  2228.4ms (0.751)  12159.9ms (0.824)
-160ms  -       976.6ms           976.4ms           3465.1ms
-160ms  cubic   1127.7ms (0.134)  1043.2ms (0.064)  4207.8ms (0.177)
-160ms  prague  2471.9ms (0.605)  2174.7ms (0.551)  14418.8ms (0.760)
-```
 
 ### Tunneled Non-L4S Flows Not Protected by FQ
 
@@ -413,6 +355,39 @@ prefer increased utilization at the expense of some intra-flow delay. We raise
 this point merely to help set the expectation that maintaining strictly low
 delays at bottlenecks comes at the expense of some link utilization for typical
 Internet traffic.
+
+### Dropped Packets for Tunnels with Replay Protection Enabled
+
+Tunnels that use windowed protection against replay attacks may drop packets
+that arrive outside the protection window after they traverse the DualPI2 C
+queue. This can cause reduced performance for tunneled, non-L4S traffic.
+
+![L4S: ipsec tunnel (32 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 16*
+
+In *Figure 16* above we see two-flow competition between CUBIC and Prague
+through an IPsec tunnel with `replay-window` set at 32 packets, the default in
+some tunnel implementations. The CUBIC flow has reduced throughput relative to
+what's expected. In *Figure 17*, replay protection has been disabled, showing
+the normal performance under these conditions.
+
+![L4S: ipsec tunnel (no replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 17*
+
+To fix this, tunnels traversing a DualPI2 bottleneck must be reconfigured with a
+replay window that's at least large enough to allow for the number of packets
+that can arrive during the maximum expected difference in sojourn times between
+the L and C queues. As an example, for typical traffic at 100Mbps with a 1500
+byte MTU, around 333 packets pass in 40ms (100000000 / 8 / 1500 / (1000 / 40)).
+
+![L4S: ipsec tunnel (256 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-256-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
+*Figure 18*
+
+In *Figure 18*, a replay window of 256 packets is used, which may be sufficient
+in this case. Note that some tunnels may only be configured with replay window
+sizes that are a power of 2.
+
+Thanks to Sebastian Moeller for reporting this issue.
 
 ## Risk Assessment
 
