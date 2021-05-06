@@ -374,18 +374,19 @@ the normal performance under these conditions.
 ![L4S: ipsec tunnel (no replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
 *Figure 17*
 
-To fix this, tunnels traversing a DualPI2 bottleneck must be reconfigured with a
-replay window that's at least large enough to allow for the number of packets
+To fix this, tunnels traversing a DualPI2 bottleneck should be reconfigured with
+a replay window that's at least large enough to allow for the number of packets
 that can arrive during the maximum expected difference in sojourn times between
 the L and C queues. As an example, for typical traffic at 100Mbps with a 1500
-byte MTU, around 333 packets pass in 40ms (100000000 / 8 / 1500 / (1000 / 40)).
+byte MTU, around 417 packets pass in 50ms (100000000 / 8 / 1500 / (1000 / 50)).
 
 ![L4S: ipsec tunnel (256 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-256-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
 *Figure 18*
 
-In *Figure 18*, a replay window of 256 packets is used, which may be sufficient
-in this case. Note that some tunnels may only be configured with replay window
-sizes that are a power of 2.
+In *Figure 18*, a replay window of 256 packets is used, which may be nearly
+enough in this case, but a higher value may be preferred to handle peak sojourn
+times through the C queue. Note that some tunnels may only be configured with
+replay window sizes that are a power of 2.
 
 Thanks to Sebastian Moeller for reporting this issue.
 
