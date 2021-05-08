@@ -829,7 +829,7 @@ for_rtts = s9_lowrtt
 # the label below changed to 0, 32, 64, 128 and 256
 for_replay = s9_replay_32
 filename_extra = ${net}-${tunnel}-${replay_name}-${qdisc}-${bandwidth}-${rtt}
-for_bandwidth = s9_100mbit
+for_bandwidth = s9_10mbit, s9_20mbit, s9_100mbit
 for_tunnel = s9_ipsec
 for_vs = s9_cubic_prague
 title = net:${net} tunnel:${tunnel} replay-window:${replay_window} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
@@ -850,6 +850,15 @@ qdisc = dualpi2
 qdisc_args = dualpi2
 
 # S9 common
+[Arg::s9_5mbit]
+bandwidth = 5Mbit
+
+[Arg::s9_10mbit]
+bandwidth = 10Mbit
+
+[Arg::s9_20mbit]
+bandwidth = 20Mbit
+
 [Arg::s9_100mbit]
 bandwidth = 100Mbit
 

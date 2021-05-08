@@ -525,6 +525,8 @@ plot_s9_tcp_delivery_with_rtt() {
 		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
 	done
 
+	rtt_scale="20,500"
+
 	title="$arch_title: $tunnel tunnel"
 }
 

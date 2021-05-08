@@ -358,35 +358,62 @@ Internet traffic.
 
 ### Dropped Packets for Tunnels with Replay Protection Enabled
 
-Tunnels that use windowed protection against replay attacks may drop packets
-that arrive outside the protection window after they traverse the DualPI2 C
-queue. This can cause reduced performance for tunneled, non-L4S traffic.
+Tunnels that use
+[windowed protection against replay attacks](https://en.wikipedia.org/wiki/Anti-replay)
+may drop packets that arrive outside the protection window after they traverse
+the DualPI2 C queue. This can cause reduced performance for tunneled, non-L4S
+traffic, and is a safety issue from the standpoint that conventional traffic
+in tunnels with replay protection enabled may be harmed by by the deployment
+of DualPI2, including IPsec tunnels using common defaults.
 
-![L4S: ipsec tunnel (32 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
+The plots in *Table 1* below show two-flow competition between CUBIC and Prague
+at a few bandwidths and replay window sizes, as a way to illustrate what the
+effect is and when it occurs. A replay window of 0 means replay protection is
+disabled, showing the standard DualPI2 behavior in these conditions. With other
+replay window sizes, conventional traffic (CUBIC) can show reduced throughput.
+
+| Bandwidth | Replay Window | RTT  | Plot |
+| --------- | ------------- | ---- | ---- |
+| 10Mbps    | 0             | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-10Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 10Mbps    | 32            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-10Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 10Mbps    | 64            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-64-dualpi2-10Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 20Mbps    | 0             | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 20Mbps    | 32            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 20Mbps    | 64            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-64-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 100Mbps   | 0             | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 100Mbps   | 32            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 100Mbps   | 64            | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-64-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 100Mbps   | 128           | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-128-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+| 100Mbps   | 256           | 20ms | [SVG](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-256-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  |
+
+*Table 1*
+
+As an example, *Figure 16* below shows the plot for a 20Mbps bottleneck with a
+32 packet window. We can see that throughput for CUBIC is much lower than what
+would be expected under these conditions, due to packets dropped by anti-replay.
+
+![L4S: ipsec tunnel (32 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg)  
 *Figure 16*
 
-In *Figure 16* above we see two-flow competition between CUBIC and Prague
-through an IPsec tunnel with `replay-window` set at 32 packets, the default in
-some tunnel implementations. The CUBIC flow has reduced throughput relative to
-what's expected. In *Figure 17*, replay protection has been disabled, showing
-the normal performance under these conditions.
+IPsec tunnels commonly use a 32 or 64 packet replay window as the default (32
+for
+[strongswan](https://wiki.strongswan.org/projects/strongswan/wiki/Strongswanconf),
+as an example). Tunnels using either of these values are affected by this
+problem at virtually all bandwidths.
 
-![L4S: ipsec tunnel (no replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-0-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
-*Figure 17*
-
-To fix this, tunnels traversing a DualPI2 bottleneck should be reconfigured with
-a replay window that's at least large enough to allow for the number of packets
-that can arrive during the maximum expected difference in sojourn times between
-the L and C queues. As an example, for typical traffic at 100Mbps with a 1500
-byte MTU, around 417 packets pass in 50ms (100000000 / 8 / 1500 / (1000 / 50)).
-
-![L4S: ipsec tunnel (256 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-256-dualpi2-100Mbit-20ms_tcp_delivery_with_rtt.svg)  
-*Figure 18*
-
-In *Figure 18*, a replay window of 256 packets is used, which may be nearly
-enough in this case, but a higher value may be preferred to handle peak sojourn
-times through the C queue. Note that some tunnels may only be configured with
+To avoid this problem, the replay window should be sufficiently large to at
+least allow for the number of packets that can arrive during the peak sojourn
+times for C. At higher bandwidths, peak sojourn times can be closer to the 25ms
+PI target, whereas at lower bandwidths, peak sojourn times can increase to 50ms
+or higher. As an example, to conservatively account for 100ms peak sojourn times
+in a 20Mbps link, a value of at least 166 packets could be used (20,000,000 / 8
+/ 1500 / (1000 / 100)). Note that some tunnels may only be configured with
 replay window sizes that are a power of 2.
+
+Modern Linux kernels have a default maximum replay window size of 4096
+(`XFRMA_REPLAY_ESN_MAX`). This may place a hard limit on the use of replay
+protection with high-speed tunnels, in which case it may need to be disabled
+entirely.
 
 Thanks to Sebastian Moeller for reporting this issue.
 
