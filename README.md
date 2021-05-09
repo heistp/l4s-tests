@@ -370,7 +370,8 @@ The plots in *Table 1* below show two-flow competition between CUBIC and Prague
 at a few bandwidths and replay window sizes, as a way to illustrate what the
 effect is and when it occurs. A replay window of 0 means replay protection is
 disabled, showing the standard DualPI2 behavior in these conditions. With other
-replay window sizes, conventional traffic (CUBIC) can show reduced throughput.
+replay window sizes, conventional traffic (CUBIC) can show reduced throughput,
+until the window is high enough such that drops do not occur.
 
 | Bandwidth | Replay Window | RTT  | Plot |
 | --------- | ------------- | ---- | ---- |
@@ -390,7 +391,8 @@ replay window sizes, conventional traffic (CUBIC) can show reduced throughput.
 
 As an example, *Figure 16* below shows the plot for a 20Mbps bottleneck with a
 32 packet window. We can see that throughput for CUBIC is much lower than what
-would be expected under these conditions, due to packets dropped by anti-replay.
+would be expected under these conditions, due to its packets being dropped by
+anti-replay.
 
 ![L4S: ipsec tunnel (32 packet replay window)](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s9-tunnel-reordering/l4s-s9-tunnel-reordering-ns-ipsec-replay-win-32-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg)  
 *Figure 16*
@@ -399,21 +401,28 @@ IPsec tunnels commonly use a 32 or 64 packet replay window as the default (32
 for
 [strongswan](https://wiki.strongswan.org/projects/strongswan/wiki/Strongswanconf),
 as an example). Tunnels using either of these values are affected by this
-problem at virtually all bandwidths.
+problem at virtually all bottleneck bandwidths.
 
 To avoid this problem, the replay window should be sufficiently large to at
-least allow for the number of packets that can arrive during the peak sojourn
-times for C. At higher bandwidths, peak sojourn times can be closer to the 25ms
-PI target, whereas at lower bandwidths, peak sojourn times can increase to 50ms
-or higher. As an example, to conservatively account for 100ms peak sojourn times
-in a 20Mbps link, a value of at least 166 packets could be used (20,000,000 / 8
-/ 1500 / (1000 / 100)). Note that some tunnels may only be configured with
-replay window sizes that are a power of 2.
+least allow for the number of packets that can arrive during the maximum
+difference between the sojourn times for C and L. Assuming that the sojourn time
+through L can sometimes be close to 0, the peak sojourn time through C is what's
+most significant. Under some network conditions (e.g. lower bandwidths or
+higher loads), peak C sojourn times can increase to 50ms or higher. As an
+example, to account for 100ms peak sojourn times in a 20Mbps link, a value of at
+least 166 packets could be used (20,000,000 / 8 / 1500 / (1000 / 100)). Note
+that some tunnels may only be configured with replay window sizes that are a
+power of 2.
 
 Modern Linux kernels have a default maximum replay window size of 4096
-(`XFRMA_REPLAY_ESN_MAX`). This may place a hard limit on the use of replay
-protection with high-speed tunnels, in which case it may need to be disabled
-entirely.
+(`XFRMA_REPLAY_ESN_MAX` in
+[xfrm.h](https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/xfrm.h)).
+Wireguard uses a hardcoded value of 8192 with no option for runtime
+configuration, increased from 2048 in May 2020 by [this
+commit](https://git.zx2c4.com/wireguard-linux/commit/drivers/net/wireguard?id=c78a0b4a78839d572d8a80f6a62221c0d7843135).
+Depending on the maximum limit supported by a particular tunnel implementation,
+replay protection may need to be disabled for high-speed tunnels, if it's
+possible to do so.
 
 Thanks to Sebastian Moeller for reporting this issue.
 
