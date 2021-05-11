@@ -364,8 +364,7 @@ Two important tsvwg mailing list posts on this issue:
 * [L4S & VPN anti-replay interaction: Explanation](https://mailarchive.ietf.org/arch/msg/tsvwg/PEVCuDJfbrel74ud8kNJtmVwhHA/) (explaining the exact mechanics)
 * [L4S dual-queue re-ordering and VPNs](https://mailarchive.ietf.org/arch/msg/tsvwg/Qw74KPTghzeqXRbFHdDTg7ETsxM/) (on use of this as a DoS attack vector)
 
-Tunnels that use
-[windowed protection against replay attacks](https://en.wikipedia.org/wiki/Anti-replay)
+Tunnels that use [anti-replay](https://en.wikipedia.org/wiki/Anti-replay)
 may drop packets that arrive outside the protection window after they traverse
 the DualPI2 C queue. This can cause reduced performance for tunneled, non-L4S
 traffic, and is a safety issue from the standpoint that conventional traffic
