@@ -73,7 +73,9 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 6. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
-7. 
+7. [Tunnels may drop packets that traverse the C queue](#dropped-packets-for-tunnels-with-replay-protection-enabled)
+   when [anti-replay](https://en.wikipedia.org/wiki/Anti-replay) is enabled,
+   leading to harm to classic traffic and enabling a DoS attack.
 
 ## Elaboration on Key Findings
 
@@ -358,13 +360,18 @@ Internet traffic.
 
 ### Dropped Packets for Tunnels with Replay Protection Enabled
 
+Two important tsvwg mailing list posts on this issue:
+* [L4S & VPN anti-replay interaction: Explanation](https://mailarchive.ietf.org/arch/msg/tsvwg/PEVCuDJfbrel74ud8kNJtmVwhHA/) (explaining the exact mechanics)
+* [L4S dual-queue re-ordering and VPNs](https://mailarchive.ietf.org/arch/msg/tsvwg/Qw74KPTghzeqXRbFHdDTg7ETsxM/) (on use of this as a DoS attack vector)
+
 Tunnels that use
 [windowed protection against replay attacks](https://en.wikipedia.org/wiki/Anti-replay)
 may drop packets that arrive outside the protection window after they traverse
 the DualPI2 C queue. This can cause reduced performance for tunneled, non-L4S
 traffic, and is a safety issue from the standpoint that conventional traffic
 in tunnels with replay protection enabled may be harmed by by the deployment
-of DualPI2, including IPsec tunnels using common defaults.
+of DualPI2, including IPsec tunnels using common defaults. It also enables a DoS
+attack that can halt C queue traffic (see above).
 
 The plots in *Table 1* below show two-flow competition between CUBIC and Prague
 at a few bandwidths and replay window sizes, as a way to illustrate what the
@@ -391,8 +398,7 @@ until the window is high enough such that drops do not occur.
 
 As an example, *Figure 16* below shows the plot for a 20Mbps bottleneck with a
 32 packet window. We can see that throughput for CUBIC is much lower than what
-would be expected under these conditions, due to its packets being dropped by
-anti-replay.
+would be expected under these conditions, due to packets drops by anti-replay.
 
 $(plot_inline "L4S: ipsec tunnel (32 packet replay window)" "l4s-s9-tunnel-reordering" "ns-ipsec-replay-win-32-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg")  
 *Figure 16*
@@ -406,13 +412,13 @@ problem at virtually all bottleneck bandwidths.
 To avoid this problem, the replay window should be sufficiently large to at
 least allow for the number of packets that can arrive during the maximum
 difference between the sojourn times for C and L. Assuming that the sojourn time
-through L can sometimes be close to 0, the peak sojourn time through C is what's
-most significant. Under some network conditions (e.g. lower bandwidths or
-higher loads), peak C sojourn times can increase to 50ms or higher. As an
-example, to account for 100ms peak sojourn times in a 20Mbps link, a value of at
-least 166 packets could be used (20,000,000 / 8 / 1500 / (1000 / 100)). Note
-that some tunnels may only be configured with replay window sizes that are a
-power of 2.
+through L can sometimes be close to 0, the peak sojourn time through C becomes
+the most significant quantity. Under some network conditions (e.g. lower
+bandwidths or higher loads), peak C sojourn times can increase to 50ms or
+higher. As an example, to account for 100ms peak sojourn times in a 20Mbps link,
+a value of at least 166 packets could be used (20,000,000 / 8 / 1500 / (1000 /
+100)). Note that some tunnels may only be configured with replay window sizes
+that are a power of 2.
 
 Modern Linux kernels have a default maximum replay window size of 4096
 (\`XFRMA_REPLAY_ESN_MAX\` in
