@@ -419,7 +419,7 @@ a value of at least 166 packets could be used (20,000,000 / 8 / 1500 / (1000 /
 100)). Note that some tunnels may only be configured with replay window sizes
 that are a power of 2.
 
-Modern Linux kernels have a default maximum replay window size of 4096
+Modern Linux kernels have a fixed **maximum** replay window size of 4096
 (\`XFRMA_REPLAY_ESN_MAX\` in
 [xfrm.h](https://elixir.bootlin.com/linux/latest/source/include/uapi/linux/xfrm.h)).
 Wireguard uses a hardcoded value of 8192 with no option for runtime
