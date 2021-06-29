@@ -99,7 +99,8 @@ on this issue.
 that here we use the parameter \`flows 1\` for fq_codel, which simulates traffic
 in a shared queue. That happens for
 [tunneled traffic](#tunneled-non-l4s-flows-not-protected-by-fq),
-or when a flow hash collision occurs.
+when a flow hash collision occurs, or may also happen when the qdisc hash has
+been [customized](https://github.com/heistp/qdisc-custom-classification/).
 
 $(plot_inline "fq_codel shared queue, Prague vs CUBIC(Non-ECN)" "l4s-s6-rfc3168" "ns-prague-vs-cubic-noecn-fq_codel_1q_-50Mbit-20ms_tcp_delivery_with_rtt.svg")
 *Figure 1*
@@ -460,7 +461,8 @@ shared queue managed by an [RFC3168](https://tools.ietf.org/html/rfc3168) AQM.
 That can happen either in a single queue AQM, or for traffic that ends up
 in the same queue in an FQ AQM, most commonly by
 [tunneled](#tunneled-non-l4s-flows-not-protected-by-fq)
-traffic, but also by hash collision.
+traffic, but also by hash collision, or when the flow hash has been
+[customized](https://github.com/heistp/qdisc-custom-classification/).
 
 The non-L4S flow being dominated *does not need to be ECN capable* in order to
 be affected.
