@@ -1,0 +1,1251 @@
+##
+#
+# L4S Tests
+#
+# Several tests of L4S in comparison to present congestion control
+#
+# Pete Heist
+#
+# Scenarios:
+# s1-rttfair: RTT Fairness
+# s2-codel-rate-step: Rate Steps Down with fq_codel
+# s3-codel-variable-rate: Variable Rates with fq_codel
+# s4-bidir-asym: bi-directional traffic with asymmetric rates
+# s5-tunnel: two-flow competition over tunnels
+# s6-rfc3168: two-flow competition in RFC3168 AQMs
+# s7-oneflow: one flow through fq_codel (for ECN stats)
+# s8-rfc3168-second: two-flow competition, RFC3168 AQMs, Prague flow first
+# s9-tunnel-reordering: two-flow competition through IPsec w/ replay protection
+# s10-ect1-gaming: Two-flow competition with ECT(1) gaming
+# s11-ect1-gaming-latency: Two-flow competition with ECT(1) gaming for latency
+# s13-rfc3168-prague-second- Prague vs Other CCAs in RFC3168 AQMs, Prague second
+#
+
+#
+# Global settings
+#
+[Batch::global]
+abstract = yes
+output_path = ${batch_title}/${batch_name}
+output_data_file = ${output_path}/${data_filename}
+socket_stats = yes
+length = 60
+step_size = 0.05
+commands = clear, setup, teardown, process
+repetitions = 1
+pause = 5
+extended_metadata = yes
+debug_error = no
+debug_log = no
+ip_version = 4
+# standard endpoint hooks, with tcp_metrics, tcpdump and scetrace
+endpoint_hooks = \
+	cli \
+		\"tcp_metrics\; \
+		run_tcpdump right\; \
+		run_scetrace ${output_path}\; \
+		compress ${output_path}\" \
+	srv \
+		\"tcp_metrics\; \
+		run_tcpdump left\"
+# endpoint hooks without pcaps
+#endpoint_hooks = \
+#	cli \
+#		\"tcp_metrics\" \
+#	srv \
+#		\"tcp_metrics\"
+# standard middlebox setup hooks for root qdiscs
+midbox_hooks_root = \
+	mid \
+		\"qdisc bidir root ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# standard middlebox setup hooks for htb child qdiscs
+midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# standard middlebox setup hooks for bi-directional htb child qdiscs
+midbox_hooks_htb_bidir = \
+	mid \
+		\"qdisc right htb ${bw_up} ${qdisc_up_args}\; \
+		qdisc left htb ${bw_down} ${qdisc_down_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+# setup hooks (inheriting batches must define midbox_hooks)
+setup_hooks = ${endpoint_hooks} ${midbox_hooks}
+# netns settings
+net = ns
+ns_srv_ip = 10.9.9.2
+ns_srv_wg_ip = 10.9.99.2
+ns_srv_fou_ip = 10.9.98.2
+ns_srv_ipsec_ip = 10.9.97.2
+hosts = ${ns_srv_ip}
+# phys settings
+phys_srv_ip = ts2
+phys_srv_wg_ip = 10.9.89.2
+phys_srv_fou_ip = 10.9.88.2
+
+#
+# L4S settings
+#
+[Batch::l4s]
+abstract = yes
+arch = l4s
+#hosts_phys = ts2
+# default midbox_hooks for L4S use child qdiscs of htb
+midbox_hooks = ${midbox_hooks_htb}
+
+#
+# Common settings
+#
+
+# net args (unused as we use only ns in this batch)
+#[Arg::net_phys]
+#net = phys
+#hosts = ${hosts_phys}
+
+#[Arg::net_ns]
+#net = ns
+# hosts must match NS_SRV_IP in fl_global.sh
+#ns_srv_ip = 10.9.9.2
+#ns_srv_wg_ip = 10.9.99.2
+#hosts = ${ns_srv_ip}
+
+# Commands
+[Command::clear]
+exec = ./fl flent_clear ${arch} ${net}
+type = pre
+essential = yes
+
+[Command::setup]
+exec = ./fl flent_setup ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = pre
+essential = yes
+
+[Command::teardown]
+exec = ./fl flent_teardown ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = post
+
+[Command::process]
+exec = ./fl flent_process ${arch} ${net} "${output_data_file}" ${setup_hooks}
+type = post
+
+
+#############################################################################
+#
+# Scenario 1- RTT Fairness
+#
+[Batch::s1-rttfair]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s1_rtt_10_10, \
+	s1_rtt_20_10, \
+	s1_rtt_20_20, \
+	s1_rtt_80_80, \
+	s1_rtt_80_20, \
+	s1_rtt_160_10
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}-${rtt2}
+for_bandwidth = s1_10mbit, \
+	s1_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt} rtt2:${rtt2}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+dscp1 = 0x4c
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+dscp2 = 0x8c
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${dscp1},${dscp2}
+ingress_hooks = qdisc bidir ingress rttfair ${rtt_delay} ${rtt_delay2} ${dscp1} ${dscp2}
+s1_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		${ingress_hooks}\"
+s1_midbox_hooks_root = \
+	mid \
+		\"qdisc bidir root ${qdisc_args}\; \
+		${ingress_hooks}\"
+midbox_hooks = ${s1_midbox_hooks_htb}
+length = 180
+
+# S1 L4S
+[Batch::l4s-s1-rttfair]
+inherits = global, l4s, s1-rttfair
+for_vs = s1_prague-vs-prague, \
+	s1_cubic-vs-prague, \
+	s1_prague-vs-cubic, \
+	s1_cubic-vs-cubic
+for_qdisc = s1_dualpi2, s1_pfifo, s1_cnq_codel_af, s1_fq_codel
+
+[Arg::s1_prague-vs-prague]
+vs = prague-vs-prague
+cc_algos = prague,prague
+
+[Arg::s1_cubic-vs-prague]
+vs = cubic-vs-prague
+cc_algos = cubic,prague
+
+[Arg::s1_prague-vs-cubic]
+vs = prague-vs-cubic
+cc_algos = prague,cubic
+
+[Arg::s1_cubic-vs-cubic]
+vs = cubic-vs-cubic
+cc_algos = cubic,cubic
+
+[Arg::s1_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s1_pfifo]
+qdisc = pfifo(${pfifo_limit})
+qdisc_args = pfifo limit ${pfifo_limit}
+
+[Arg::s1_cnq_codel_af]
+qdisc = cnq_codel_af
+qdisc_args = cnq_codel_af bandwidth ${bandwidth}
+midbox_hooks = ${s1_midbox_hooks_root}
+
+[Arg::s1_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+# S1 common
+[Arg::s1_10mbit]
+bandwidth = 10Mbit
+pfifo_limit = 200
+
+[Arg::s1_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s1_100mbit]
+bandwidth = 100Mbit
+pfifo_limit = 1000
+
+[Arg::s1_rtt_10_10]
+rtt = 10ms
+rtt2 = 10ms
+rtt_delay = 5ms
+rtt_delay2 = 5ms
+
+[Arg::s1_rtt_20_10]
+rtt = 20ms
+rtt2 = 10ms
+rtt_delay = 10ms
+rtt_delay2 = 5ms
+
+[Arg::s1_rtt_20_20]
+rtt = 20ms
+rtt2 = 20ms
+rtt_delay = 10ms
+rtt_delay2 = 10ms
+
+[Arg::s1_rtt_80_80]
+rtt = 80ms
+rtt2 = 80ms
+rtt_delay = 40ms
+rtt_delay2 = 40ms
+
+[Arg::s1_rtt_80_20]
+rtt = 80ms
+rtt2 = 20ms
+rtt_delay = 40ms
+rtt_delay2 = 10ms
+
+[Arg::s1_rtt_160_10]
+rtt = 160ms
+rtt2 = 10ms
+rtt_delay = 80ms
+rtt_delay2 = 5ms
+
+
+#############################################################################
+#
+# Scenario 2- Rate reduction step with Codel
+#
+[Batch::s2-codel-rate-step]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s2_lowrtt, s2_lowrtt_bursty, s2_medrtt, s2_medrtt_bursty
+for_bandwidth1 = s2_bandwidth1_25mbit, s2_bandwidth1_10mbit, \
+	s2_bandwidth1_5mbit, s2_bandwidth1_1mbit
+bandwidth = 50Mbit
+filename_extra = ${net}-${burstname}-${cc}-${qdisc}-${bandwidth}-${bandwidth1}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} bandwidth1:${bandwidth1} rtt:${rtt} bursty:${burstiness}
+test_parameters = cc_algo=${cc};
+
+# S2 L4S
+[Batch::l4s-s2-codel-rate-step]
+inherits = global, l4s, s2-codel-rate-step
+for_cc = s2_prague, s2_cubic
+for_qdisc = s2_fq_codel, s2_dualpi2
+midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir after ${delay1} htb ${bandwidth1}\; \
+		qdisc bidir ingress root-tree ${netem_args}\"
+
+# S2 args
+[Arg::s2_bandwidth1_25mbit]
+bandwidth1 = 25mbit
+
+[Arg::s2_bandwidth1_10mbit]
+bandwidth1 = 10mbit
+
+[Arg::s2_bandwidth1_5mbit]
+bandwidth1 = 5mbit
+
+[Arg::s2_bandwidth1_1mbit]
+bandwidth1 = 1mbit
+
+[Arg::s2_prague]
+cc = prague
+
+[Arg::s2_cubic]
+cc = cubic
+
+[Arg::s2_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+[Arg::s2_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s2_lowrtt]
+rtt = 20ms
+length = 60
+delay1 = 30
+netem_args = \\\"netem delay 10ms limit 100000\\\"
+burstname = clean
+burstiness = no
+
+[Arg::s2_lowrtt_bursty]
+inherits = s2_lowrtt
+netem_args = \\\"netem delay 10ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 16 limit 10000\\\"
+burstname = bursty
+burstiness = yes
+
+[Arg::s2_medrtt]
+rtt = 80ms
+length = 60
+delay1 = 30
+netem_args = \\\"netem delay 40ms limit 100000\\\"
+burstname = clean
+burstiness = no
+
+[Arg::s2_medrtt_bursty]
+inherits = s2_medrtt
+netem_args = \\\"netem delay 40ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 16 limit 10000\\\"
+burstname = bursty
+burstiness = yes
+
+
+#############################################################################
+#
+# Scenario 3- Variable rates with Codel
+#
+[Batch::s3-codel-variable-rate]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s3_lowrtt, s3_lowrtt_bursty, s3_medrtt, s3_medrtt_bursty
+bandwidth = 100Mbit
+filename_extra = ${net}-${burstname}-${cc}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt} bursty:${burstiness}
+test_parameters = cc_algo=${cc};
+
+# S3 L4S
+[Batch::l4s-s3-codel-variable-rate]
+inherits = global, l4s, s3-codel-variable-rate
+for_cc = s3_prague, s3_cubic
+for_qdisc = s3_fq_codel, s3_dualpi2
+delay1 = 25
+bandwidth1 = 50Mbit
+delay2 = 30
+bandwidth2 = 10Mbit
+delay3 = 35
+bandwidth3 = 90Mbit
+delay4 = 50
+bandwidth4 = 5Mbit
+midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir after ${delay1} htb ${bandwidth1}\; \
+		qdisc bidir after ${delay2} htb ${bandwidth2}\; \
+		qdisc bidir after ${delay3} htb ${bandwidth3}\; \
+		qdisc bidir after ${delay4} htb ${bandwidth4}\; \
+		qdisc bidir ingress root-tree ${netem_args}\"
+
+# S3 args
+[Arg::s3_prague]
+cc = prague
+fq_codel_ecn = ecn
+
+[Arg::s3_cubic]
+cc = cubic
+fq_codel_ecn = noecn
+
+[Arg::s3_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel ${fq_codel_ecn}
+
+[Arg::s3_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s3_lowrtt]
+rtt = 20ms
+length = 60
+netem_args = \\\"netem delay 10ms limit 100000\\\"
+burstiness = no
+burstname = not_bursty
+
+[Arg::s3_lowrtt_bursty]
+inherits = s3_lowrtt
+netem_args = \\\"netem delay 10ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 32 limit 10000\\\"
+burstiness = yes
+burstname = bursty
+
+[Arg::s3_medrtt]
+rtt = 80ms
+length = 60
+netem_args = \\\"netem delay 40ms limit 100000\\\"
+burstiness = no
+burstname = not_bursty
+
+[Arg::s3_medrtt_bursty]
+inherits = s3_medrtt
+netem_args = \\\"netem delay 40ms limit 100000\\\" \
+	\\\"netem delay 200us slot 800us 5ms packets 32 limit 10000\\\"
+burstiness = yes
+burstname = bursty
+
+#############################################################################
+#
+# Scenario 4- Bi-directional asymmetric rates
+#
+[Batch::s4-bidir-asym]
+abstract = yes
+test_name = rrul_be
+for_bandwidth = s4_bw_1Mbit_10Mbit, s4_bw_1Mbit_20Mbit, s4_bw_5Mbit_100Mbit
+for_rtts = s4_lowrtt, s4_medrtt
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bw_up}/${bw_down} rtt:${rtt} duration:${length}s
+filename_extra = ${net}-${cc}-${qdisc}-${bw_up}-${bw_down}-${rtt}
+endpoint_hooks = ${endpoint_hooks_no_pcap}
+test_parameters = tcp_cong_control=${cc};
+
+# S4 L4S
+[Batch::l4s-s4-bidir-asym]
+inherits = global, l4s, s4-bidir-asym
+for_cc = s4_cubic, s4_prague
+for_qdisc = s4_fq_codel, s4_dualpi2, s4_pfifo
+midbox_hooks = ${midbox_hooks_htb_bidir}
+
+[Arg::s4_dualpi2]
+qdisc = dualpi2
+qdisc_up_args = dualpi2
+qdisc_down_args = dualpi2
+
+[Arg::s4_prague]
+cc = prague
+
+# S4 common
+[Arg::s4_cubic]
+cc = cubic
+
+[Arg::s4_bw_1Mbit_10Mbit]
+bw_up = 1Mbit
+bw_down = 10Mbit
+pfifo_up_limit = 20
+pfifo_down_limit = 200
+
+[Arg::s4_bw_1Mbit_20Mbit]
+bw_up = 1Mbit
+bw_down = 20Mbit
+pfifo_up_limit = 20
+pfifo_down_limit = 400
+
+[Arg::s4_bw_5Mbit_100Mbit]
+bw_up = 5Mbit
+bw_down = 100Mbit
+pfifo_up_limit = 100
+pfifo_down_limit = 1000
+
+[Arg::s4_fq_codel]
+qdisc = fq_codel
+qdisc_up_args = fq_codel
+qdisc_down_args = fq_codel
+
+[Arg::s4_pfifo]
+qdisc = pfifo(${pfifo_up_limit},${pfifo_down_limit})
+qdisc_up_args = pfifo limit ${pfifo_up_limit}
+qdisc_down_args = pfifo limit ${pfifo_down_limit}
+midbox_hooks = ${midbox_hooks_htb_bidir}
+
+[Arg::s4_lowrtt]
+rtt = 20ms
+length = 60
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s4_medrtt]
+rtt = 80ms
+length = 60
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 5- Two-flow competition over tunnels
+#
+[Batch::s5-tunnel]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s5_lowrtt
+filename_extra = ${net}-${tunnel}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s5_50mbit
+for_tunnel = s5_wireguard, s5_ipfou
+title = net:${net} tunnel:${tunnel} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s5_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+midbox_hooks = ${s5_midbox_hooks_htb}
+net = phys
+
+# S5 L4S
+[Batch::l4s-s5-tunnel]
+inherits = global, l4s, s5-tunnel
+for_vs = s5_prague-vs-cubic, \
+	s5_prague-vs-reno
+for_qdisc = s5_fq_codel
+
+[Arg::s5_prague-vs-cubic]
+vs = prague-vs-cubic
+cc_algos = prague,cubic
+
+[Arg::s5_prague-vs-reno]
+vs = prague-vs-reno
+cc_algos = prague,reno
+
+[Arg::s5_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+# S5 common
+[Arg::s5_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s5_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s5_wireguard]
+tunnel = wireguard
+#hosts = ${ns_srv_wg_ip}
+hosts = ${phys_srv_wg_ip}
+
+[Arg::s5_ipfou]
+tunnel = ipfou
+#hosts = ${ns_srv_fou_ip}
+hosts = ${phys_srv_fou_ip}
+
+
+#############################################################################
+#
+# Scenario 6- Two-flow competition in RFC3168 AQMs
+#
+[Batch::s6-rfc3168]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s6_lowrtt
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s6_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+test_parameters = cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s6_midbox_hooks_noecn = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S6 L4S
+[Batch::l4s-s6-rfc3168]
+inherits = global, l4s, s6-rfc3168
+for_vs = s6_prague-vs-cubic-ecn, \
+	s6_prague-vs-cubic-noecn, \
+	s6_prague-vs-reno-ecn, \
+	s6_prague-vs-reno-noecn
+#for_vs = s6_prague-vs-cubic-ecn,
+#	s6_prague-vs-cubic-noecn
+for_qdisc = s6_fq_codel, \
+	s6_fq_codel_1_20, \
+	s6_pie, \
+	s6_pie_100p_5ms, \
+	s6_red_400000, \
+	s6_red_150000
+#for_qdisc = s6_fq_codel
+
+[Arg::s6_prague-vs-cubic-ecn]
+vs = prague-vs-cubic-ecn
+cc_algos = prague,cubic
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s6_prague-vs-cubic-noecn]
+vs = prague-vs-cubic-noecn
+cc_algos = prague,cubic
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s6_midbox_hooks_noecn}
+
+[Arg::s6_prague-vs-reno-ecn]
+vs = prague-vs-reno-ecn
+cc_algos = prague,reno
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s6_prague-vs-reno-noecn]
+vs = prague-vs-reno-noecn
+cc_algos = prague,reno
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s6_midbox_hooks_noecn}
+
+[Arg::s6_fq_codel]
+qdisc = fq_codel(1q)
+qdisc_args = fq_codel flows 1
+
+[Arg::s6_fq_codel_1_20]
+qdisc = fq_codel(1q,1ms/20ms)
+qdisc_args = fq_codel flows 1 target 1ms interval 20ms
+
+[Arg::s6_pie]
+qdisc = pie
+qdisc_args = pie ecn
+
+[Arg::s6_pie_100p_5ms]
+qdisc = pie(100p/5ms)
+qdisc_args = pie limit 100 target 5ms tupdate 32ms alpha 2 beta 20 ecn
+
+[Arg::s6_red_400000]
+qdisc = red(400000b)
+qdisc_args = red limit 400000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+[Arg::s6_red_150000]
+qdisc = red(150000b)
+qdisc_args = red limit 150000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+# S6 common
+[Arg::s6_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s6_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 7- Single flow through fq_codel
+#
+[Batch::s7-oneflow]
+abstract = yes
+inherits = global
+test_name = tcp_1up
+for_rtts = s7_lowrtt, s7_medrtt
+bandwidth = 50Mbit
+filename_extra = ${net}-${cc}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} cc:${cc} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+test_parameters = cc_algo=${cc};
+
+# S7 L4S
+[Batch::l4s-s7-oneflow]
+inherits = global, l4s, s7-oneflow
+for_cc = s7_cubic, s7_reno, s7_prague
+for_qdisc = s7_fq_codel
+
+# S7 args
+[Arg::s7_50mbit]
+bandwidth = 50mbit
+
+[Arg::s7_cubic]
+cc = cubic
+
+[Arg::s7_reno]
+cc = reno
+
+[Arg::s7_prague]
+cc = prague
+
+[Arg::s7_fq_codel]
+qdisc = fq_codel
+qdisc_args = fq_codel
+
+[Arg::s7_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s7_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 8- Prague vs CUBIC/Reno in RFC3168 AQMs, Prague starts first
+#
+[Batch::s8-rfc3168-second]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s8_lowrtt, s8_medrtt
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s8_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s8_midbox_hooks_noecn = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S8 L4S
+[Batch::l4s-s8-rfc3168-second]
+inherits = global, l4s, s8-rfc3168-second
+for_vs = s8_prague-vs-cubic-ecn, \
+	s8_prague-vs-cubic-noecn, \
+	s8_prague-vs-reno-ecn, \
+	s8_prague-vs-reno-noecn
+
+#for_qdisc = s8_fq_codel, \
+#	s8_fq_codel_1_20, \
+#	s8_pie, \
+#	s8_pie_100p_5ms, \
+#	s8_red_400000, \
+#	s8_red_150000
+
+for_qdisc = s8_fq_codel, \
+	s8_pie, \
+	s8_red_400000
+
+[Arg::s8_prague-vs-cubic-ecn]
+vs = prague-vs-cubic-ecn
+cc_algos = prague,cubic
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s8_prague-vs-cubic-noecn]
+vs = prague-vs-cubic-noecn
+cc_algos = prague,cubic
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s8_midbox_hooks_noecn}
+
+[Arg::s8_prague-vs-reno-ecn]
+vs = prague-vs-reno-ecn
+cc_algos = prague,reno
+tos2 = 0x00
+dscp2 = 0x00
+
+[Arg::s8_prague-vs-reno-noecn]
+vs = prague-vs-reno-noecn
+cc_algos = prague,reno
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos2 = 0x8c
+dscp2 = 0x23
+midbox_hooks = ${s8_midbox_hooks_noecn}
+
+[Arg::s8_fq_codel]
+qdisc = fq_codel(1q)
+qdisc_args = fq_codel flows 1
+
+[Arg::s8_fq_codel_1_20]
+qdisc = fq_codel(1q,1ms/20ms)
+qdisc_args = fq_codel flows 1 target 1ms interval 20ms
+
+[Arg::s8_pie]
+qdisc = pie
+qdisc_args = pie ecn
+
+[Arg::s8_pie_100p_5ms]
+qdisc = pie(100p/5ms)
+qdisc_args = pie limit 100 target 5ms tupdate 32ms alpha 2 beta 20 ecn
+
+[Arg::s8_red_400000]
+qdisc = red(400000b)
+qdisc_args = red limit 400000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+[Arg::s8_red_150000]
+qdisc = red(150000b)
+qdisc_args = red limit 150000 avpkt 1000 adaptive bandwidth ${bandwidth} ecn
+
+# S8 common
+[Arg::s8_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s8_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s8_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 9- TCP 2up test through IPsec with replay protection (re-ordering)
+#
+[Batch::s9-tunnel-reordering]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s9_lowrtt
+# replay-window must be modified in the fl script manually for each run, and
+# the label below changed to 0, 32, 64, 128 and 256
+for_replay = s9_replay_32
+filename_extra = ${net}-${tunnel}-${replay_name}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s9_10mbit, s9_20mbit, s9_100mbit
+for_tunnel = s9_ipsec
+for_vs = s9_cubic_prague
+title = net:${net} tunnel:${tunnel} replay-window:${replay_window} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+test_parameters = cc_algos=${cc_algos};
+s9_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+midbox_hooks = ${s9_midbox_hooks_htb}
+
+# S9 L4S
+[Batch::l4s-s9-tunnel-reordering]
+inherits = global, l4s, s9-tunnel-reordering
+for_qdisc = s9_dualpi2
+
+[Arg::s9_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+# S9 common
+[Arg::s9_5mbit]
+bandwidth = 5Mbit
+
+[Arg::s9_10mbit]
+bandwidth = 10Mbit
+
+[Arg::s9_20mbit]
+bandwidth = 20Mbit
+
+[Arg::s9_100mbit]
+bandwidth = 100Mbit
+
+[Arg::s9_200mbit]
+bandwidth = 200Mbit
+
+[Arg::s9_500mbit]
+bandwidth = 500Mbit
+
+[Arg::s9_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s9_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+[Arg::s9_cubic]
+vs = cubic-vs-cubic
+cc_algos = cubic,cubic
+
+[Arg::s9_cubic_prague]
+vs = cubic-vs-prague
+cc_algos = cubic,prague
+
+[Arg::s9_ipsec]
+tunnel = ipsec
+hosts = ${ns_srv_ipsec_ip}
+
+[Arg::s9_replay_0]
+replay_window = 0
+replay_name = replay-win-0
+
+[Arg::s9_replay_32]
+replay_window = 32
+replay_name = replay-win-32
+
+[Arg::s9_replay_64]
+replay_window = 64
+replay_name = replay-win-64
+
+[Arg::s9_replay_128]
+replay_window = 128
+replay_name = replay-win-128
+
+[Arg::s9_replay_256]
+replay_window = 256
+replay_name = replay-win-256
+
+[Arg::s9_wireguard]
+tunnel = wireguard
+hosts = ${ns_srv_wg_ip}
+
+
+#############################################################################
+#
+# Scenario 10- Two-flow competition with ECT(1) gaming
+#
+[Batch::s10-ect1-gaming]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s10_lowrtt, s10_medrtt
+for_bandwidth = s10_50mbit
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+tos2 = 0x8c
+dscp2 = 0x23
+# pace streams to max 50Mbps
+stream_pacing = "-q 6250000,-q 6250000"
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}; \
+	stream_test_args=${stream_pacing}; \
+	cc_algo_titles=${cc_algo_titles}; \
+	plot_title=${plot_title};
+s10_ecn_midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		dscp_to_ect1 left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+s10_noecn_midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		dscp_to_notect_ect1 left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S10 L4S
+[Batch::l4s-s10-ect1-gaming]
+inherits = global, l4s, s10-ect1-gaming
+for_vs = s10_prague-vs-cubic-ecn, \
+	s10_prague-vs-cubic-noecn, \
+	s10_cubic-vs-cubic-ecn, \
+	s10_cubic-vs-cubic-noecn
+for_qdisc = s10_dualpi2
+
+[Arg::s10_prague-vs-cubic-ecn]
+vs = prague-vs-cubic-ecn
+cc_algos = prague,cubic
+plot_title = Prague vs CUBIC(ECN/ECT1 gamed)
+cc_algo_titles = Prague,CUBIC(ECN/ECT1 gamed)
+midbox_hooks = ${s10_ecn_midbox_hooks}
+
+[Arg::s10_prague-vs-cubic-noecn]
+vs = prague-vs-cubic-noecn
+cc_algos = prague,cubic
+plot_title = Prague vs CUBIC(Non-ECN/ECT1 gamed)
+cc_algo_titles = Prague,CUBIC(Non-ECN/ECT1 gamed)
+midbox_hooks = ${s10_noecn_midbox_hooks}
+
+[Arg::s10_cubic-vs-cubic-ecn]
+vs = cubic-vs-cubic-ecn
+cc_algos = cubic,cubic
+plot_title = CUBIC vs CUBIC(ECN/ECT1 gamed)
+cc_algo_titles = CUBIC,CUBIC(ECN/ECT1 gamed)
+midbox_hooks = ${s10_ecn_midbox_hooks}
+
+[Arg::s10_cubic-vs-cubic-noecn]
+vs = cubic-vs-cubic-noecn
+cc_algos = cubic,cubic
+plot_title = CUBIC vs CUBIC(Non-ECN/ECT1 gamed)
+cc_algo_titles = CUBIC,CUBIC(Non-ECN/ECT1 gamed)
+midbox_hooks = ${s10_noecn_midbox_hooks}
+
+[Arg::s10_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+# S10 common
+[Arg::s10_50mbit]
+bandwidth = 50Mbit
+
+[Arg::s10_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s10_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 11- Two-flow competition with ECT(1) gaming, second flow paced
+#
+[Batch::s11-ect1-gaming-latency]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s11_lowrtt, s11_medrtt
+#for_rtts = s11_lowrtt
+for_bandwidth = s11_50mbit
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos1 = 0x4c
+dscp1 = 0x13
+tos2 = 0x8c
+dscp2 = 0x23
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}; \
+	stream_test_args=${stream_pacing}; \
+	cc_algo_titles=${cc_algo_titles}; \
+	plot_title=${plot_title};
+s11_gamed_midbox_hooks = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		dscp_to_notect_ect1 left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+s11_gamed_midbox_hooks_root = \
+	mid \
+		\"qdisc bidir root ${qdisc_args}\; \
+		dscp_to_notect_ect1 left ${dscp2}\; \
+		qdisc bidir ingress root ${netem_args}\"
+s11_midbox_hooks_htb = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S11 L4S
+[Batch::l4s-s11-ect1-gaming-latency]
+inherits = global, l4s, s11-ect1-gaming-latency
+for_vs = s11_cubic-vs-cubic-50-40-cake, \
+	s11_cubic-vs-cubic-ect1-50-40-cake, \
+	s11_cubic-vs-cubic-50-40-dualpi2, \
+	s11_cubic-vs-cubic-ect1-50-40-dualpi2
+
+# 50Mbps/40Mbps (cake)
+[Arg::s11_cubic-vs-cubic-50-40-cake]
+inherits = s11_pacing_50_40, s11_cake
+midbox_hooks = ${midbox_hooks_root}
+vs = cubic-vs-cubic-50-40
+cc_algos = cubic,cubic
+plot_title = CUBIC(50Mbps) vs CUBIC(40Mbps)
+cc_algo_titles = CUBIC(50Mbps),CUBIC(40Mbps)
+
+[Arg::s11_cubic-vs-cubic-ect1-50-40-cake]
+inherits = s11_pacing_50_40, s11_cake
+midbox_hooks = ${s11_gamed_midbox_hooks_root}
+vs = cubic-vs-cubic-ect1-50-40
+cc_algos = cubic,cubic
+plot_title = CUBIC(50Mbps) vs CUBIC(40Mbps/ECT1 gamed)
+cc_algo_titles = CUBIC(50Mbps),CUBIC(40Mbps/ECT1 gamed)
+
+# 50Mbps/40Mbps (dualpi2)
+[Arg::s11_cubic-vs-cubic-50-40-dualpi2]
+inherits = s11_pacing_50_40, s11_dualpi2
+midbox_hooks = ${s11_midbox_hooks_htb}
+vs = cubic-vs-cubic-50-40
+cc_algos = cubic,cubic
+plot_title = CUBIC(50Mbps) vs CUBIC(40Mbps)
+cc_algo_titles = CUBIC(50Mbps),CUBIC(40Mbps)
+
+[Arg::s11_cubic-vs-cubic-ect1-50-40-dualpi2]
+inherits = s11_pacing_50_40, s11_dualpi2
+midbox_hooks = ${s11_gamed_midbox_hooks}
+vs = cubic-vs-cubic-ect1-50-40
+cc_algos = cubic,cubic
+plot_title = CUBIC(50Mbps) vs CUBIC(40Mbps/ECT1 gamed)
+cc_algo_titles = CUBIC(50Mbps),CUBIC(40Mbps/ECT1 gamed)
+
+[Arg::s11_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+[Arg::s11_cake]
+qdisc = cake
+qdisc_args = cake bandwidth ${bandwidth}
+
+# S11 common
+[Arg::s11_50mbit]
+bandwidth = 50Mbit
+
+#[Arg::s11_pacing_50_10]
+#stream_pacing = "-q 6250000,-q 1250000"
+
+[Arg::s11_pacing_50_40]
+stream_pacing = "-q 6250000,-q 5000000"
+
+#[Arg::s11_pacing_50_45]
+#stream_pacing = "-q 6250000,-q 5625000"
+
+[Arg::s11_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s11_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000
+
+
+#############################################################################
+#
+# Scenario 12- Pacing
+#
+[Batch::s12-pacing]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s12_lowrtt
+filename_extra = ${net}-${vs}-${fq}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s12_50mbit
+title = net:${net} vs:${vs} fq:${fq} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos};
+for_fq = s12_fq, s12_nofq
+
+# S12 L4S
+[Batch::l4s-s12-pacing]
+inherits = global, l4s, s12-pacing
+for_vs = s12_prague-vs-cubic
+for_qdisc = s12_dualpi2
+
+[Arg::s12_prague-vs-cubic]
+vs = prague-vs-cubic
+cc_algos = prague,cubic
+
+[Arg::s12_dualpi2]
+qdisc = dualpi2
+qdisc_args = dualpi2
+
+# S12 common
+[Arg::s12_50mbit]
+bandwidth = 50Mbit
+
+[Arg::s12_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s12_fq]
+midbox_hooks = \
+	cli \
+		\"qdisc right root fq\" \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		qdisc bidir ingress root ${netem_args}\"
+fq = fq
+
+[Arg::s12_nofq]
+fq = nofq
+
+
+#############################################################################
+#
+# Scenario 13- Prague vs Other CCAs in RFC3168 AQMs, Prague starts second
+#
+[Batch::s13-rfc3168-prague-second]
+abstract = yes
+inherits = global
+test_name = tcp_2up
+for_rtts = s13_lowrtt, s13_medrtt
+filename_extra = ${net}-${vs}-${qdisc}-${bandwidth}-${rtt}
+for_bandwidth = s13_50mbit
+title = net:${net} vs:${vs} qdisc:${qdisc} bandwidth:${bandwidth} rtt:${rtt}
+# 01001100, 0x4c (experimental pool, avoiding SCE)
+tos2 = 0x4c
+dscp2 = 0x13
+test_parameters = stream_delays="0,10"; \
+	cc_algos=${cc_algos}; \
+	markings=${tos1},${tos2}
+s13_midbox_hooks_noecn = \
+	mid \
+		\"qdisc bidir htb ${bandwidth} ${qdisc_args}\; \
+		bleach_ecn left ${dscp1}\; \
+		qdisc bidir ingress root ${netem_args}\"
+
+# S13 L4S
+[Batch::l4s-s13-rfc3168-prague-second]
+inherits = global, l4s, s13-rfc3168-prague-second
+for_vs = s13_cubic-ecn-vs-prague, \
+	s13_cubic-noecn-vs-prague, \
+	s13_reno-ecn-vs-prague, \
+	s13_reno-noecn-vs-prague
+
+for_qdisc = s13_fq_codel
+
+[Arg::s13_cubic-ecn-vs-prague]
+vs = cubic-ecn-vs-prague
+cc_algos = cubic,prague
+tos1 = 0x00
+dscp1 = 0x00
+
+[Arg::s13_cubic-noecn-vs-prague]
+vs = cubic-noecn-vs-prague
+cc_algos = cubic,prague
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos1 = 0x8c
+dscp1 = 0x23
+midbox_hooks = ${s13_midbox_hooks_noecn}
+
+[Arg::s13_reno-ecn-vs-prague]
+vs = reno-ecn-vs-prague
+cc_algos = reno,prague
+tos1 = 0x00
+dscp1 = 0x00
+
+[Arg::s13_reno-noecn-vs-prague]
+vs = reno-noecn-vs-prague
+cc_algos = reno,prague
+# 10001100, 0x8c (experimental pool, avoiding SCE)
+tos1 = 0x8c
+dscp1 = 0x23
+midbox_hooks = ${s13_midbox_hooks_noecn}
+
+[Arg::s13_fq_codel]
+qdisc = fq_codel(1q)
+qdisc_args = fq_codel flows 1
+
+# S13 common
+[Arg::s13_50mbit]
+bandwidth = 50Mbit
+pfifo_limit = 1000
+
+[Arg::s13_lowrtt]
+rtt = 20ms
+netem_args = netem delay 10ms limit 1000000
+
+[Arg::s13_medrtt]
+rtt = 80ms
+netem_args = netem delay 40ms limit 1000000

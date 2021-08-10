@@ -1,0 +1,25 @@
+.md5sum
+steady_state
+
+# Private directory
+private/
+
+# Local config
+config/*local*
+
+# VIM
+*.swp
+.tags
+
+# Temp files
+*tmp*
+nohup.out
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

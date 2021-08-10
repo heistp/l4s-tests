@@ -1,0 +1,2770 @@
+#!/bin/bash
+
+#############################################################################
+#
+# CONFIG FUNCTIONS
+#
+#
+
+SOURCE_DIR=$(dirname "$BASH_SOURCE[0]")
+
+# config_files emits names of the config files
+config_files() {
+	local exclude_regex="$1"
+	# end of params
+
+	for f in $SOURCE_DIR/config/fl_*; do
+		[[ $exclude_regex && $f =~ $exclude_regex ]] || echo "$f"
+	done
+}
+
+# source includes
+if [ -d "$SOURCE_DIR/config" ]; then
+	for f in $(config_files); do
+		. "$f"
+	done
+fi
+
+
+#############################################################################
+#
+# GLOBALS
+#
+#
+
+# fl.sh ssh destinations
+FL_SSH=($MGMT_SSH $SCE_CLI_SSH $L4S_CLI_SSH)
+
+# clients
+CLIENTS_SSH=($SCE_CLI_SSH $L4S_CLI_SSH)
+
+# push config
+PUSH_RSYNC_DEST="$PUSH_SSH_DEST:$ARCHIVE_DIR"
+
+
+#############################################################################
+#
+# PLOT FUNCTIONS
+#
+#
+
+# plot_tattr emits a title attribute
+plot_tattr() {
+	local key="$1"
+	local tattrs=($2)
+	# end of params
+
+	for a in "${tattrs[@]}"; do
+		IFS=":" read k v <<< "$a"
+		if [ "$key" == "$k" ]; then
+			echo "$v"
+			return 0
+		fi
+	done
+}
+
+# plot_rtt_scale emits the plot's RTT scale from the base RTT
+plot_rtt_scale() {
+	case $1 in
+		10ms) echo "10,60" ;;
+		20ms) echo "20,70" ;;
+		80ms) echo "80,150" ;;
+		160ms) echo "160,260" ;;
+		500ms) echo "500,1000" ;;
+		*) echo "0,200" ;;
+	esac
+}
+
+# plot_bandwidth_scale emits the plot's bandwidth scale from the bandwidth
+plot_bandwidth_scale() {
+	case $1 in
+		1Mbit|*/1Mbit) echo "0,1.2" ;;
+		5Mbit|*/5Mbit) echo "0,6" ;;
+		10Mbit|*/10Mbit) echo "0,12" ;;
+		20Mbit|*/20Mbit) echo "0,25" ;;
+		25Mbit|*/25Mbit) echo "0,30" ;;
+		50Mbit|*/50Mbit) echo "0,55" ;;
+		100Mbit|*/100Mbit) echo "0,110" ;;
+		200Mbit|*/200Mbit) echo "0,220" ;;
+		250Mbit|*/250Mbit) echo "0,260" ;;
+		1Gbit|*/1Gbit) echo "0,1050" ;;
+		*) echo "0,1050" ;;
+	esac
+}
+
+# plot_cc_algo_title emits the title of a CC algo from its key string
+plot_cc_algo_title() {
+	case $1 in
+		cubic) echo "CUBIC" ;;
+		cubic-sce) echo "CUBIC-SCE" ;;
+		reno) echo "Reno" ;;
+		reno-sce) echo "Reno-SCE" ;;
+		dctcp) echo "DCTCP" ;;
+		dctcp-sce) echo "DCTCP-SCE" ;;
+		prague) echo "Prague" ;;
+		bbr) echo "BBR" ;;
+		*) echo "UnknownCC" ;;
+	esac
+}
+
+plot_vs_title() {
+	case $1 in
+		cubic-vs-cubic-sce) echo "CUBIC vs CUBIC-SCE" ;;
+		cubic-vs-cubic) echo "CUBIC vs CUBIC" ;;
+		cubic-vs-cubic-ect1) echo "CUBIC vs CUBIC(ECT1)" ;;
+		cubic-vs-prague) echo "CUBIC vs Prague" ;;
+		cubic-vs-cubic-ecn) echo "CUBIC vs CUBIC(ECN)" ;;
+		cubic-vs-cubic-noecn) echo "CUBIC vs CUBIC(Non-ECN)" ;;
+		cubic-vs-cubic-noecn-10mbps) echo "CUBIC vs CUBIC(Non-ECN 10Mbps)" ;;
+		cubic-ecn-vs-prague) echo "CUBIC(ECN) vs Prague" ;;
+		cubic-noecn-vs-prague) echo "CUBIC(Non-ECN) vs Prague" ;;
+		prague-vs-cubic) echo "Prague vs CUBIC" ;;
+		prague-vs-reno) echo "Prague vs Reno" ;;
+		prague-vs-prague) echo "Prague vs Prague" ;;
+		prague-vs-cubic-ecn) echo "Prague vs CUBIC(ECN)" ;;
+		prague-vs-cubic-noecn) echo "Prague vs CUBIC(Non-ECN)" ;;
+		prague-vs-reno) echo "Prague vs Reno" ;;
+		prague-vs-reno-ecn) echo "Prague vs Reno(ECN)" ;;
+		prague-vs-reno-noecn) echo "Prague vs Reno(Non-ECN)" ;;
+		reno-vs-reno) echo "Reno vs Reno" ;;
+		reno-ecn-vs-prague) echo "Reno(ECN) vs Prague" ;;
+		reno-noecn-vs-prague) echo "Reno(Non-ECN) vs Prague" ;;
+		bbr-vs-cubic-sce) echo "BBR vs CUBIC-SCE" ;;
+		bbr-vs-prague) echo "BBR vs Prague" ;;
+		*) echo "UnknownVS" ;;
+	esac
+}
+
+# plot_arch_title emits the title of the architecture from its key string
+plot_arch_title() {
+	case $1 in
+		sce) echo "SCE" ;;
+		l4s) echo "L4S" ;;
+		*) echo "UnknownArch" ;;
+	esac
+}
+
+# plot_qdisc_title emits the qdisc title from its key string
+plot_qdisc_title() {
+	case $1 in
+		*cake*) echo "Cake FQ" ;;
+		*cnq_codel_af*) echo "CNQ-CodelAF" ;;
+		*twin_codel_af*) echo "Twin-CodelAF" ;;
+		*lfq_cobalt*) echo "LFQ-COBALT" ;;
+		*dualpi2*) echo "DualPI2" ;;
+		*pie*) echo "PIE" ;;
+		*) echo "$1" ;;
+	esac
+}
+
+# plot_file generates one plot
+plot_file() {
+	local arch="$1"
+	local in="$2"
+	local plot="$3"
+	local scenario=$4
+	# end of params
+
+	# jq_test_param emits a test parameter value from a .flent.gz file
+	jq_test_param() {
+		gzip -dc $in | jq -r ".metadata.TEST_PARAMETERS.$1"
+	}
+	
+	# jq_title emits the metadata title from a .flent.gz file
+	jq_title() {
+		gzip -dc $in | jq -r ".metadata.TITLE"
+	}
+	
+	# jq_batch_name emits the metadata batch name from a .flent.gz file
+	jq_batch_name() {
+		gzip -dc $in | jq -r ".metadata.BATCH_NAME"
+	}
+
+	# jq_scale_rtt emits the max RTT Y value calculated from the data values
+	jq_scale_rtt() {
+		gzip -dc "$in" | \
+			jq "(.results.\"Ping (ms) ICMP\"+.results.\"TCP upload::tcp_rtt\"|max-$rttval)*3+$rttval"
+	}
+
+	# read params from flent file
+	local cc_algo=$(jq_test_param cc_algo)
+	[[ $cc_algo == "null" ]] && cc_algo=$(jq_test_param tcp_cong_control)
+	local cc_algos=$(jq_test_param cc_algos)
+	local cc_algo_titles=$(jq_test_param cc_algo_titles)
+	local plot_title=$(jq_test_param plot_title)
+	local subtitle=$(jq_title)
+	local batch_name=$(jq_batch_name)
+	local rtt=$(plot_tattr rtt "$subtitle")
+	local rtt2=$(plot_tattr rtt2 "$subtitle")
+	local rttval=${rtt//[!0-9]/}
+	local bandwidth=$(plot_tattr bandwidth "$subtitle")
+	local vs=$(plot_tattr vs "$subtitle")
+	local qdisc=$(plot_tattr qdisc "$subtitle")
+	local tunnel=$(plot_tattr tunnel "$subtitle")
+
+	# output path
+	local outdir=$(dirname "$in")
+	local outfile=$(basename "$in")
+	outfile="${outfile#"batch-"}"
+	outfile="${outfile%".flent.gz"}"
+	outfile+="_$plot"
+	local outpath="$outdir/$outfile.$PLOT_FORMAT"
+
+	# further calculated params
+	local rtt_scale=$(plot_rtt_scale $rtt)
+	local bandwidth_scale=$(plot_bandwidth_scale $bandwidth)
+	local cc_title=$(plot_cc_algo_title $cc_algo)
+	local arch_title=$(plot_arch_title $arch)
+	local vs_title=$(plot_vs_title $vs)
+	local colors
+	[[ $COLORS ]] && colors="$COLORS"
+
+	# plot visitor assigned params
+	local title
+	local subtitle2
+
+	# other locals
+	local tput_name
+	local tput_abbrev
+	local tput_title
+	if [[ $plot =~ delivery ]]; then
+		tput_name="delivery rate"
+		tput_abbrev="delivery"
+		tput_title="Delivery Rate"
+	else 
+		tput_name="throughput"
+		tput_abbrev="thruput"
+		tput_title="Throughput"
+	fi
+
+	# start empty array for arguments
+	local fl_args=()
+
+	# plot visitor assigns title and additional arguments
+	plot_${scenario}_${plot}
+
+	# common args
+	fl_args+=( "-i" "$in" )
+	fl_args+=( "-p" "$plot" )
+	fl_args+=( "-o" "$outpath" )
+	fl_args+=( "--figure-width" "$PLOT_WIDTH" )
+	fl_args+=( "--figure-height" "$PLOT_HEIGHT" )
+	[[ $colors ]] && fl_args+=("--colours" "$colors" )
+	fl_args+=( "--fallback-layout" )
+
+	# plot-specific args
+	case $plot in
+		tcp_delivery_with_rtt)
+			fl_args+=( "--bounds-y" "$bandwidth_scale" )
+			fl_args+=( "--bounds-y" "$rtt_scale" )
+			fl_args+=( "--label-y" "Mbps" )
+			fl_args+=( "--label-y" "ms" )
+			;;
+		box_totals)
+			fl_args+=( "--bounds-y" "$bandwidth_scale" )
+			fl_args+=( "--bounds-y" "$rtt_scale" )
+			;;
+	esac
+
+	local final_title=$(printf "%s\n\n%s" "$title" "$subtitle")
+	if [[ $subtitle2 ]]; then
+		final_title=$(printf "%s\n%s" "$final_title" "$subtitle2")
+	fi
+
+	fl_args+=( "--override-title" "$final_title" )
+
+	flent "${fl_args[@]}"
+}
+
+# plot_s1_tcp_delivery_with_rtt is the plot visitor for scenario 1
+plot_s1_tcp_delivery_with_rtt() {
+	local IFS=,
+	local rtts=($rtt $rtt2)
+	local cca
+	local i
+	local r
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	i=0
+	for cca in $cc_algos; do
+		(( i == 0 )) && r=$rtt || r=$rtt2
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $r $tput_name" )
+		((i++))
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	i=0
+	for cca in $cc_algos; do
+		(( i == 0 )) && r=$rtt || r=$rtt2
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $r TCP RTT" )
+		((i++))
+	done
+
+	s1_colors_tput() {
+		local cubic1="#E41A1C"
+		local cubic2="#377EB8"
+		local prague1="#4DAF4A"
+		local prague2="#984EA3"
+
+		case "$cc_algos" in
+			cubic,cubic) echo -n "'$cubic1','$cubic2'," ;;
+			cubic,prague) echo -n "'$cubic1','$prague1'," ;;
+			prague,cubic) echo -n "'$prague1','$cubic1'," ;;
+			prague,prague) echo -n "'$prague1','$prague2'," ;;
+			*) return 1 ;;
+		esac
+	}
+
+	s1_colors_tcp_rtt() {
+		local cubic1="#FF7F00"
+		local cubic2="#FFFF33"
+		local prague1="#A65628"
+		local prague2="#F781BF"
+
+		case "$cc_algos" in
+			cubic,cubic) echo -n "'$cubic1','$cubic2'," ;;
+			cubic,prague) echo -n "'$cubic1','$prague1'," ;;
+			prague,cubic) echo -n "'$prague1','$cubic1'," ;;
+			prague,prague) echo -n "'$prague1','$prague2'," ;;
+			*) return 1 ;;
+		esac
+	}
+
+	s1_add_colors() {
+		local c
+
+		c="$(s1_colors_tput)" || return 1
+		c+="'#7F7F7F',"
+		c+="$(s1_colors_tcp_rtt)" || return 1
+		colors="$c"
+	}
+	s1_add_colors
+
+	plot_1_rtt_scale() {
+		case $1 in
+			pfifo*) echo "0,2000" ;;
+			*) echo "0,1000" ;;
+		esac
+	}
+	rtt_scale=$(plot_1_rtt_scale $qdisc)
+
+	title="$arch_title: RTT Fairness for $vs_title at $rtt and $rtt2"
+}
+
+# plot_s1_box_totals is the plot visitor for scenario 1
+# TODO convert to upload_box plot
+#plot_s1_box_totals() {
+#	plot_rtt_scale_s1() {
+#		case $1 in
+#			20ms) echo "20,1000" ;;
+#			80ms) echo "80,2000" ;;
+#			*) echo "0,200" ;;
+#		esac
+#	}
+#	rtt_scale=$(plot_rtt_scale_s1 $rtt2)
+#
+#	title="$arch_title: RTT Fairness for $vs_title at $rtt and $rtt2"
+#}
+
+# plot_s2_tcp_delivery_with_rtt is the plot visitor for scenario 2
+plot_s2_tcp_delivery_with_rtt() {
+	local bandwidth1=$(plot_tattr bandwidth1 "$subtitle")
+
+	title="$arch_title: Rate Reduction for $cc_title with $(plot_qdisc_title $qdisc), $bandwidth → $bandwidth1 at $rtt"
+
+	fl_args+=( "--override-label" "$cc_algo $tput_name" )
+	fl_args+=( "--override-label" "ICMP RTT" )
+	fl_args+=( "--override-label" "TCP RTT" )
+
+	plot_s2_rtt_scale() {
+		case $1 in
+			20ms) echo "0,1000" ;;
+			80ms) echo "0,2000" ;;
+			*) echo "0,200" ;;
+		esac
+	}
+
+	rtt_scale=$(plot_s2_rtt_scale $rtt)
+}
+
+# plot_s3_tcp_delivery_with_rtt is the plot visitor for scenario 3
+plot_s3_tcp_delivery_with_rtt() {
+	local bandwidth1=$(plot_tattr bandwidth1 "$subtitle")
+
+	title="$arch_title: Variable Rate for $cc_title with $(plot_qdisc_title $qdisc), $bandwidth at $rtt"
+
+	fl_args+=( "--override-label" "$cc_algo $tput_name" )
+	fl_args+=( "--override-label" "ICMP RTT" )
+	fl_args+=( "--override-label" "TCP RTT" )
+
+	plot_s3_rtt_scale() {
+		case $1 in
+			20ms) echo "0,500" ;;
+			80ms) echo "0,2000" ;;
+			*) echo "0,200" ;;
+		esac
+	}
+
+	rtt_scale=$(plot_s3_rtt_scale $rtt)
+}
+
+# plot_s4_all_scaled_delivery is the plot visitor for scenario 4
+plot_s4_all_scaled_delivery() {
+	title="$arch_title: Bi-directional $cc_title"
+}
+
+# plot_s4_box_totals is the plot visitor for scenario 4
+plot_s4_box_totals() {
+	title="$arch_title: Bi-directional $cc_title"
+
+	plot_rtt_scale_s4() {
+		case $1 in
+			20ms) echo "0,1000" ;;
+			80ms) echo "0,2000" ;;
+			*) echo "0,200" ;;
+		esac
+	}
+	rtt_scale=$(plot_rtt_scale_s4 $rtt)
+}
+
+# plot_s5_tcp_delivery_with_rtt is the plot visitor for scenario 5
+plot_s5_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $tunnel tunnel, $vs_title"
+}
+
+# plot_s6_tcp_delivery_with_rtt is the plot visitor for scenario 6
+plot_s6_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
+# plot_s7_tcp_delivery_with_rtt is the plot visitor for scenario 7
+plot_s7_tcp_delivery_with_rtt() {
+	title="$arch_title: Single $cc_title flow through $qdisc, $rtt rtt"
+
+	fl_args+=( "--override-label" "$cc_algo $tput_name" )
+	fl_args+=( "--override-label" "ICMP RTT" )
+	fl_args+=( "--override-label" "TCP RTT" )
+}
+
+# plot_s8_tcp_delivery_with_rtt is the plot visitor for scenario 8
+plot_s8_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
+# plot_s9_tcp_delivery_with_rtt is the plot visitor for scenario 9
+plot_s9_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	rtt_scale="20,500"
+
+	title="$arch_title: $tunnel tunnel"
+}
+
+# plot_s10_tcp_delivery_with_rtt is the plot visitor for scenario 10
+plot_s10_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for ccat in $cc_algo_titles; do
+		fl_args+=( "--override-label" "$ccat $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for ccat in $cc_algo_titles; do
+		fl_args+=( "--override-label" "$ccat TCP RTT" )
+	done
+
+	title="$arch_title: ${plot_title}"
+}
+
+# plot_s11_tcp_delivery_with_rtt is the plot visitor for scenario 11
+plot_s11_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for ccat in $cc_algo_titles; do
+		fl_args+=( "--override-label" "$ccat $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for ccat in $cc_algo_titles; do
+		fl_args+=( "--override-label" "$ccat TCP RTT" )
+	done
+
+	title="$arch_title: ${plot_title}"
+}
+
+
+# plot_s12_tcp_delivery_with_rtt is the plot visitor for scenario 12
+plot_s12_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
+# plot_s13_tcp_delivery_with_rtt is the plot visitor for scenario 13
+plot_s13_tcp_delivery_with_rtt() {
+	local IFS=,
+	local cca
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) $tput_name" )
+	done
+
+	fl_args+=( "--override-label" "ICMP RTT" )
+
+	fl_args+=( "--override-label" "" )
+	fl_args+=( "--override-label" "" )
+
+	for cca in $cc_algos; do
+		fl_args+=( "--override-label" "$(plot_cc_algo_title $cca) TCP RTT" )
+	done
+
+	title="$arch_title: $vs_title in $qdisc"
+}
+
+
+#############################################################################
+#
+# UTILITY FUNCTIONS
+#
+#
+
+# fl_ssh runs fl remotely via ssh
+fl_ssh() {
+	local dest=$1; shift # ssh destination
+	local root=$1; shift # true|false
+	local background=$1; shift # true|false
+	local args="$@"
+	# end of params
+
+	local sudo_args
+	[[ $root == true ]] && sudo_args='$([[ $EUID != 0 ]] && echo sudo)'
+
+	local args_esc
+	args_esc=$(printf %q "$args")
+
+	# run directly on hosts with fl script, or via stdout on hosts without
+	if array_contains $dest "${FL_SSH[@]}"; then
+		if [[ $background == true ]]; then
+			ssh $dest cd $SCRIPT_DIR\; nohup $sudo_args ./fl $args_esc \&\>log.txt \&
+		else
+			ssh $dest cd $SCRIPT_DIR\; $sudo_args ./fl $args_esc 2>&1 | \
+				sed "s/^/$dest: /"
+			return ${PIPESTATUS[0]}
+		fi
+	else
+		if [[ $background == true ]]; then
+			cat $(config_files) fl | \
+				ssh $dest $sudo_args nohup bash -s $args_esc \&\> \
+					\$\(mktemp /tmp/fl.log.XXXXXXXX\) \&
+		else
+			cat $(config_files) fl | \
+				ssh $dest $sudo_args bash -s $args_esc || return $?
+		fi
+	fi
+}
+
+# fl_node runs fl either via netns or remotely via ssh
+fl_node() {
+	local arch=$1; shift
+	local net=$1; shift
+	local node=$1; shift
+	local args="$@"
+	# end of params
+
+	case $net in
+	phys)
+		fl_ssh $(node_ssh $arch $node) true false $args || return $?
+		;;
+	ns)
+		nsx $node ./fl $args || return $?
+		;;
+	*)
+		>&2 echo "unknown net: $net"
+		return 1
+	esac
+}
+
+# fl_node_pull copies files from a node's directory to a local directory
+fl_node_pull() {
+	local arch=$1
+	local net=$2
+	local node=$3
+	local src_dir="$4"
+	local dst_dir="$5"
+	# end of params
+
+	case $net in
+	phys)
+		ev scp \"$(node_ssh $arch $node):$src_dir/*\" "$dst_dir" || return $?
+		;;
+	ns)
+		ev cp "$src_dir/*" "$dst_dir" || return $?
+		;;
+	*)
+		>&2 echo "unknown net: $net"
+		return 1
+	esac
+}
+
+# send_pushover sends a pushover message
+send_pushover() {
+	local sound="$1"
+	local msg="$2"
+	# end of params
+
+	if [[ $PUSHOVER_USER ]]; then
+		response=$(/usr/bin/curl -s \
+			--retry 3 \
+			--form-string token=$PUSHOVER_TOKEN \
+			--form-string user=$PUSHOVER_USER \
+			--form-string "sound=$sound" \
+			--form-string "message=$msg" \
+			https://api.pushover.net/1/messages.json)
+
+		[[ ! "$response" == *"\"status\":1"* ]] && echo "$response" >&2
+	fi
+}
+
+# set_offloads enables or disables offloads for an eth iface
+set_offloads() {
+	local iface="$1"
+	local state="$2" # on|off
+	local ns="$3"
+	# end of params
+
+	local cmd
+	cmd="sudo"
+	[[ $ns ]] && cmd+=" ip netns exec $ns"
+	cmd+=" ethtool -K $iface"
+	cmd+=" rx $state tx $state"
+	cmd+=" sg $state tso $state"
+	cmd+=" gso $state gro $state"
+	cmd+=" rxvlan $state txvlan $state"
+
+	$cmd
+}
+
+# wait_for_pids waits for processes to exit and returns a count of failures
+wait_for_pids() {
+	local pids=("$@")
+	# end of params
+
+	local errs=0
+	local p
+	for p in ${pids[@]}; do
+		wait $p || ((errs++))
+	done
+	return $errs
+}
+
+# wait_for_jobs waits until there are fewer than $(nproc) jobs in the background
+wait_for_jobs() {
+	local procs=$(nproc)
+	while (( $(jobs -p | wc -w) >= $procs )); do
+		wait -n
+	done
+}
+
+# array_contains succeeds if an array contains an element
+array_contains() {
+	local elem="$1"; shift
+	local arr=("$@")
+	# end of params
+
+	local e
+	for e in "${arr[@]}"; do
+		[[ $e == $elem ]] && return 0
+	done
+	return 1
+}
+
+# ifb emits the ifb interface name for an interface
+ifb() {
+	local iface=$1
+	echo "ifb4$iface"
+}
+
+# ev emits and evaluates a command
+ev() {
+	local r=0
+	echo "+ $@"
+	eval "$@"
+	r=$?
+	if [[ $DEBUG == 1 && $r != 0 ]]; then
+		>&2 echo "command failed with status $r: $@"
+	fi
+	echo
+	return $r
+}
+
+# evs runs eval separately for each command separated by ;
+evs() {
+	IFS=';' read -r -a cmds <<< "$@"
+	local c
+	local r
+
+	for c in "${cmds[@]}"; do
+		# remove leading and trailing whitespace
+		c=$(echo $c | awk '{$1=$1};1')
+		eval $c
+		r=$?
+		if (( r != 0 )); then
+			>&2 echo "command failed with status $r: $c"
+			return $r
+		fi
+	done
+}
+
+# ev evaluates a command and only emits it if DEBUG is 1
+evq() {
+	local r
+	[[ $DEBUG == 1 ]] && echo "+ $@"
+	eval "$@" &>/dev/null
+	r=$?
+	if [[ $DEBUG == 1 && $r != 0 ]]; then
+		>&2 echo "command failed with status $r: $@"
+	fi
+	return $r
+}
+
+# split splits a string by comma
+split() {
+	local s=(${1//,/ })
+	echo "${s[@]}"
+}
+
+
+#############################################################################
+#
+# IPSEC SUPPORT FUNCTIONS
+#
+#
+setup_ipsec() {
+	local ns="$1"; shift
+	local dev="$1"; shift
+	local src="$1"; shift
+	local dst="$1"; shift
+	local local="$1"; shift
+	local remote="$1"; shift
+
+	nsx $ns ip xfrm state flush
+	nsx $ns ip xfrm policy flush
+
+	nsx $ns ip xfrm state add src $src dst $dst proto esp \
+		spi $NS_IPSEC_ID reqid $NS_IPSEC_REQID \
+		mode tunnel auth sha256 $NS_IPSEC_KEY1 enc aes $NS_IPSEC_KEY2 \
+	  replay-window 32
+
+	nsx $ns ip xfrm state add src $dst dst $src proto esp \
+		spi $NS_IPSEC_ID reqid $NS_IPSEC_REQID \
+		mode tunnel auth sha256 $NS_IPSEC_KEY1 enc aes $NS_IPSEC_KEY2 \
+		replay-window 32
+
+	nsx $ns ip xfrm policy add src $local dst $remote \
+		dir out tmpl src $src dst $dst proto esp \
+		reqid $NS_IPSEC_REQID mode tunnel
+
+	nsx $ns ip xfrm policy add src $remote dst $local \
+		dir in tmpl src $dst dst $src proto esp \
+		reqid $NS_IPSEC_REQID mode tunnel
+
+	nsx $ns ip link add $NS_IPSEC_IFACE type xfrm dev $dev
+	nsx $ns ip addr add $local dev $NS_IPSEC_IFACE
+	nsx $ns ip link set up dev $NS_IPSEC_IFACE
+	nsx $ns ip route add $remote dev $dev src $local
+}
+
+teardown_ipsec() {
+	local ns="$1"; shift
+	local dev="$1"; shift
+	local local="$1"; shift
+	local remote="$1"; shift
+
+	nsx $ns ip xfrm state flush
+	nsx $ns ip xfrm policy flush
+	nsx $ns ip route del $remote dev $dev src $local
+	nsx $ns ip link delete $NS_IPSEC_IFACE
+}
+
+#############################################################################
+#
+# NAMESPACES FUNCTIONS
+#
+#
+
+# nsx executes a command in a namespace
+nsx() {
+	local ns="$1"; shift
+	local args="$@"
+	# end of fixed args
+
+	# client is run in default namespace
+	if [[ $ns == cli ]]; then
+		sudo $args
+	else
+		sudo ip netns exec $ns $args
+	fi
+}
+
+# ns_setup sets up the netns environment
+ns_setup() {
+	local arch=$1
+	# end of params
+
+	# srv
+	sudo ip netns add srv || return $?
+	sudo ip link add dev $NS_SRV_LEFT type veth peer name $NS_MID_RIGHT || return $?
+	sudo ip link set dev $NS_SRV_LEFT netns srv || return $?
+	nsx srv ip addr add $NS_SRV_NET dev $NS_SRV_LEFT || return $?
+	nsx srv ip link set $NS_SRV_LEFT up || return $?
+
+	# srv wireguard
+	nsx srv ip link add dev $NS_WG_IFACE type wireguard
+	nsx srv ip addr add dev $NS_WG_IFACE $NS_SRV_WG_NET peer $NS_CLI_WG_IP
+	echo $NS_SRV_WG_PRIV > /tmp/ns_srv_wg_priv
+	nsx srv wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_srv_wg_priv peer "$NS_CLI_WG_PUB" allowed-ips $NS_CLI_WG_IP endpoint $NS_CLI_IP:$NS_WG_PORT
+	nsx srv ip link set up dev $NS_WG_IFACE
+
+	## srv ipfou (unused now)
+	#nsx srv ip fou add port $NS_FOU_PORT ipproto 4
+	#nsx srv ip link add name $NS_FOU_IFACE type ipip \
+	#	remote $NS_CLI_IP local $NS_SRV_IP ttl 225 \
+	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	#nsx srv ip addr add $NS_SRV_FOU_NET dev $NS_FOU_IFACE
+	#nsx srv ip link set $NS_FOU_IFACE up
+
+	# srv ipsec
+	setup_ipsec srv $NS_SRV_LEFT $NS_SRV_IP $NS_CLI_IP \
+		$NS_SRV_IPSEC_IP $NS_CLI_IPSEC_IP
+
+	if [[ $NS_OFFLOADS == off ]]; then
+		set_offloads $NS_SRV_LEFT off srv || return $?
+	fi
+	if [[ $arch == "sce" ]]; then
+		nsx srv sysctl -qw net.ipv4.tcp_sce=1 || return $?
+		#nsx srv sysctl -qw net.ipv4.tcp_sce_feedback_mode=1 || return $?
+		nsx srv sysctl -qw net.ipv4.tcp_ecn=1 || return $?
+	elif [[ $arch == "l4s" ]]; then
+		nsx srv sysctl -qw net.ipv4.tcp_ecn=3 || return $?
+	fi
+
+	# mid
+	sudo ip netns add mid || return $?
+	sudo ip link set dev $NS_MID_RIGHT netns mid || return $?
+	if [[ $NS_OFFLOADS == off ]]; then
+		set_offloads $NS_MID_RIGHT off mid || return $?
+	fi
+	nsx mid ip link set $NS_MID_RIGHT up || return $?
+	sudo ip link add dev $NS_MID_LEFT type veth peer name $NS_CLI_RIGHT || return $?
+	sudo ip link set dev $NS_MID_LEFT netns mid || return $?
+	if [[ $NS_OFFLOADS == off ]]; then
+		set_offloads $NS_MID_LEFT off mid || return $?
+	fi
+	nsx mid ip link set $NS_MID_LEFT up || return $?
+	nsx mid ip link add name mid.b type bridge || return $?
+	nsx mid ip link set dev $NS_MID_RIGHT master mid.b || return $?
+	nsx mid ip link set dev $NS_MID_LEFT master mid.b || return $?
+	nsx mid ip link set dev mid.b up || return $?
+
+	# cli uses default namespace
+	sudo ip addr add $NS_CLI_NET dev $NS_CLI_RIGHT || return $?
+	sudo ip link set $NS_CLI_RIGHT up || return $?
+	if [[ $NS_OFFLOADS == off ]]; then
+		set_offloads $NS_CLI_RIGHT off || return $?
+	fi
+	if [[ $arch == "sce" ]]; then
+		sudo sysctl -qw net.ipv4.tcp_sce=1 || return $? >/dev/null
+		#sudo sysctl -qw net.ipv4.tcp_sce_feedback_mode=1 || return $? >/dev/null
+		sudo sysctl -qw net.ipv4.tcp_ecn=1 || return $? >/dev/null
+	elif [[ $arch == "l4s" ]]; then
+		sudo sysctl -qw net.ipv4.tcp_ecn=3 || return $? >/dev/null
+	fi
+
+	# cli wireguard
+	sudo ip link add $NS_WG_IFACE type wireguard
+	sudo ip addr add $NS_CLI_WG_NET dev $NS_WG_IFACE
+	echo $NS_CLI_WG_PRIV > /tmp/ns_cli_wg_priv
+	sudo wg set $NS_WG_IFACE listen-port $NS_WG_PORT private-key /tmp/ns_cli_wg_priv peer "$NS_SRV_WG_PUB" allowed-ips $NS_SRV_WG_IP endpoint $NS_SRV_IP:$NS_WG_PORT
+	sudo ip link set $NS_WG_IFACE up
+
+	# cli ipfou (unused now)
+	#sudo ip fou add port $NS_FOU_PORT ipproto 4
+	#sudo ip link add name $NS_FOU_IFACE type ipip \
+	#	remote $NS_SRV_IP local $NS_CLI_IP ttl 225 \
+	#	encap fou encap-sport $NS_FOU_PORT encap-dport $NS_FOU_PORT
+	#sudo ip addr add $NS_CLI_FOU_NET dev $NS_FOU_IFACE
+	#sudo ip link set $NS_FOU_IFACE up
+
+	# cli ipsec
+	setup_ipsec cli $NS_CLI_RIGHT $NS_CLI_IP $NS_SRV_IP \
+		$NS_CLI_IPSEC_IP $NS_SRV_IPSEC_IP
+
+	# start netserver (with -d for debug so it doesn't change perms on /dev/null)
+	if ! command -v netserver >&/dev/null; then
+		>&2 echo "netserver not found"
+		return 1
+	fi
+	nsx srv netserver -d >&/dev/null
+
+	# start irtt
+	if ! command -v irtt >&/dev/null; then
+		>&2 echo "irtt not found"
+		return 1
+	fi
+	nsx srv irtt server -i 0 --syslog=local: >&/dev/null &
+}
+
+# ns_teardown tears down the netns environment
+ns_teardown() {
+	# stop services
+	sudo pkill irtt || true
+	sudo pkill netserver || true
+
+	# delete namespaces
+	sudo ip netns del srv || true
+	sudo ip netns del mid || true
+
+	# delete wireguard in default namespace
+	sudo ip link delete $NS_WG_IFACE type wireguard
+
+	# delete fou (unused now)
+	#sudo ip link delete $NS_FOU_IFACE type ipip
+	#sudo ip fou delete port $NS_FOU_PORT ipproto 4
+
+	# delete ipsec in default namespace
+	teardown_ipsec cli $NS_CLI_RIGHT $NS_CLI_IPSEC_IP $NS_SRV_IPSEC_IP
+}
+
+#############################################################################
+#
+# REMOTE FUNCTIONS
+#
+#
+
+# remote_run_flent runs flent
+remote_run_flent() {
+	local arch="$1"
+	local batch_title="$2"
+	local pattern="$3"
+	local dry="$4"
+	# end of params
+
+	local fl_args=""
+	local bcount=0
+
+	# check kernel version
+	check_kernel_version() {
+		local kvar=${arch^^}_KERNEL_VERSION
+
+		if [[ ${!kvar} ]]; then
+			local kver=$(cat /proc/version)
+			if [[ $kver != ${!kvar} ]]; then
+				>&2 echo "kernel version mismatch"
+				>&2 echo "expected: '${!kvar}'"
+				>&2 echo "found: '$kver'"
+				return 1
+			fi
+		fi
+	}
+
+	# cleans up after flent run
+	run_flent_cleanup() {
+		ns_teardown || true
+
+		local u=$(whoami)
+		local g=$(groups | cut -f1 -d " ")
+		for d in $(find . -mindepth 1 -maxdepth 1 -type d); do
+			sudo chown -R $u:$g "$d" || true
+		done
+	}
+
+	# build flent args
+	for b in $(sed -rn 's/^\[Batch::(.*)\]$/\1/p' < $BATCH_FILE); do
+		if [[ $b =~ ^$arch ]]; then
+			if [[ $pattern =~ "all" ]] || [[ $b =~ $pattern ]]; then
+				fl_args+=" -b $b"
+				((bcount++))
+			fi
+		fi
+	done
+	[[ $dry == true ]] && fl_args+=" --batch-dry-run"
+
+	# run flent if any batches matched
+	if (( bcount > 0 )); then
+		trap run_flent_cleanup EXIT
+
+		check_kernel_version || return $?
+
+		ns_setup $arch || return $?
+	
+		sudo flent \
+			--batch-no-timestamp \
+			--batch-title $batch_title \
+			-B $BATCH_FILE \
+			$fl_args \
+			--batch-no-shuffle || return $?
+	else
+		echo "No matching tests to perform."
+	fi
+}
+
+# remote_clear_setup is called to clear the setup on a node
+remote_clear_setup() {
+	for d in $(tc qdisc | awk '$3!="0:" && !x[$5]++ {print $5}'); do
+		evq tc qdisc del dev $d root || true
+		[[ $d != ifb* ]] && evq tc qdisc del dev $d ingress || true
+	done
+	for l in `ip link show | sed -rn 's/.* (ifb\S+):.*/\1/p'`; do
+		evq tc qdisc del dev $l root || true
+		evq ip link del dev $l || true
+	done
+	evq iptables -t mangle -F POSTROUTING || true
+	evq ip tcp_metrics flush || true
+}
+
+# remote_setup_command is called to set up or tear down a node
+remote_setup_command() {
+	local command=$1; shift # setup or teardown
+	local arch=$1; shift
+	local net=$1; shift
+	local node=$1; shift
+	local cmd="$@"
+	local r
+
+	on_fail() {
+		eval "PHASE=teardown; $cmd"
+	}
+
+	case $command in
+		setup)
+			rm -fr "$(data_dir $node)" || return $?
+			mkdir -p "$(data_dir $node)" || return $?
+			evs "PHASE=init; $cmd" || { r=$?; on_fail; return $r; }
+			evs "PHASE=setup; $cmd" || { r=$?; on_fail; return $r; }
+			evs "PHASE=show_setup; $cmd; kernel_info" || { r=$?; on_fail; return $r; }
+			;;
+		teardown)
+			evs "PHASE=show_teardown; $cmd" || { r=$?; on_fail; return $r; }
+			evs "PHASE=teardown; $cmd" || { r=$?; on_fail; return $r; }
+			;;
+		*)
+			>&2 echo "command $command not implemented"
+			on_fail
+			return 1
+			;;
+	esac
+}
+
+# remote_plot plots all files in all directories in parallel
+remote_plot() {
+	local arch="$1"
+	local spec="$2"
+
+	plot_dir() {
+		local pdir="$1"
+		local plot="$2"
+		local scenario="$3"
+
+		if [[ -d $pdir ]]; then
+			echo "Plotting directory $pdir."
+			rm -f $pdir/*_${plot}.png $pdir/*_${plot}.svg
+			local pids=()
+			local f
+			for f in $pdir/*.flent.gz; do
+				if [[ -f $f ]]; then
+					wait_for_jobs
+					plot_file $arch "$f" $plot $scenario &
+					pids+=($!)
+				fi
+			done
+			wait_for_pids ${pids[@]} || return $?
+		else
+			echo "Skipping plot for non-existent directory $pdir."
+		fi
+	}
+
+	local dir
+	for dir in "${spec[@]}"; do
+		if [[ -d $dir ]]; then
+			plot_dir $dir/$arch-s1-rttfair \
+				tcp_delivery_with_rtt s1 || return $?
+			plot_dir $dir/$arch-s1-rttfair \
+				box_totals s1 || return $?
+
+			plot_dir $dir/$arch-s2-codel-rate-step \
+				tcp_delivery_with_rtt s2 || return $?
+
+			plot_dir $dir/$arch-s3-codel-variable-rate \
+				tcp_delivery_with_rtt s3 || return $?
+
+			plot_dir $dir/$arch-s4-bidir-asym \
+				box_totals s4 || return $?
+			plot_dir $dir/$arch-s4-bidir-asym \
+				all_scaled_delivery s4 || return $?
+
+			plot_dir $dir/$arch-s5-tunnel \
+				tcp_delivery_with_rtt s5 || return $?
+
+			plot_dir $dir/$arch-s6-rfc3168 \
+				tcp_delivery_with_rtt s6 || return $?
+
+			plot_dir $dir/$arch-s7-oneflow \
+				tcp_delivery_with_rtt s7 || return $?
+
+			plot_dir $dir/$arch-s8-rfc3168-second \
+				tcp_delivery_with_rtt s8 || return $?
+
+			plot_dir $dir/$arch-s9-tunnel-reordering \
+				tcp_delivery_with_rtt s9 || return $?
+
+			plot_dir $dir/$arch-s10-ect1-gaming \
+				tcp_delivery_with_rtt s10 || return $?
+
+			plot_dir $dir/$arch-s11-ect1-gaming-latency \
+				tcp_delivery_with_rtt s11 || return $?
+
+			plot_dir $dir/$arch-s12-pacing \
+				tcp_delivery_with_rtt s12 || return $?
+
+			plot_dir $dir/$arch-s13-rfc3168-prague-second \
+				tcp_delivery_with_rtt s13 || return $?
+		fi
+	done
+}
+
+# remote_push_result pushes results to the archive
+remote_push_result() {
+	local spec="$1"
+	# end of params
+
+	[[ $spec ]] || spec="$BATCH-*"
+
+	echo "Pushing $spec to $PUSH_RSYNC_DEST"
+	rsync -rt --ignore-missing-args \
+		"$PUSH_RSYNC_ARGS" \
+		$spec \
+		"$PUSH_RSYNC_DEST"
+}
+
+# remote_clean removes result directories
+remote_clean() {
+	rm -fr $BATCH_OUT_SPEC
+}
+
+# remote_list lists result directories
+remote_list() {
+	local dir
+	for dir in $BATCH-*; do
+		[[ -d $dir ]] && echo $dir
+	done
+}
+
+# remote_hello emits message for testing
+remote_hello() {
+	echo Hello from fl on $(hostname)!
+}
+
+
+#############################################################################
+#
+# FLENT HARNESS ENTRY POINT FUNCTIONS
+#
+#
+
+# flent_clear is the flent hook for clearing the setup
+flent_clear() {
+	local arch=$1
+	local net=$2
+	# end of params
+
+	# clear all ssh dests for phys, or all namespaces for netns
+	local pids=()
+	case $net in
+		phys)
+			local d
+			for d in "${CLEAR_SSH_DESTS[@]}"; do
+				fl_ssh $d true false remote_clear_setup &
+				pids+=($!)
+			done
+			;;
+		ns)
+			local n
+			for n in "${CLEAR_NODES[@]}"; do
+				fl_node $arch $net $n remote_clear_setup &
+				pids+=($!)
+			done
+			;;
+		*)
+			echo "unknown net: $net"
+			return -1
+	esac
+
+	wait_for_pids ${pids[@]}
+}
+
+# flent_setup is the flent hook for node setup
+flent_setup() {
+	flent_setup_teardown setup "$@"
+}
+
+# flent_teardown is the flent hook for node teardown
+flent_teardown() {
+	flent_setup_teardown teardown "$@"
+}
+
+# flent_setup_teardown implements the flent setup and teardown hooks
+flent_setup_teardown() {
+	local command=$1; shift # setup|teardown
+	local arch=$1; shift
+	local net=$1; shift
+	local data_filename="$1"; shift
+	local end=$(( $# / 2 ))
+	# end of params
+
+	# log_file returns the log file name for a node
+	log_file() {
+		echo "$(log_dir $1)/$1.log"
+	}
+
+	# execute commands for each node in parallel
+	local nodes=()
+	local pids=()
+	local i
+	local n
+	local c
+	for (( i = 0; i < $end; i++ )); do
+		n=$1; shift
+		c="$1"; shift
+		rm -fr "$(log_dir $n)" || return $?
+		mkdir -p "$(log_dir $n)" || return $?
+		(
+			local r
+			fl_node $arch $net $n \
+				remote_setup_command $command $arch $net $n $(printf %q "$c") &> $(log_file $n)
+			r=$?
+			if (( r != 0 )); then
+				>&2 echo "remote_setup_command failed, arch:$arch, node:$n, status:$r"
+				>&2 echo "failed command: \"$command\""
+			fi
+			exit $r
+		) &
+		nodes+=($n)
+		pids+=($!)
+	done
+
+	# wait for setup pids
+	local errs
+	wait_for_pids ${pids[@]}
+	errs=$?
+
+	# concatenate output from each node into one file for the command
+	(
+		for n in ${nodes[@]}; do
+			echo $n
+			echo "${n//?/-}"
+			echo
+			cat $(log_file $n)
+			echo
+			rm $(log_file $n)
+			rmdir "$(log_dir $n)"
+		done
+	) 2>&1 | tee "${data_filename}.$command.log"
+
+	return $errs
+}
+
+# flent_process is the flent hook for processing results
+flent_process() {
+	local arch=$1; shift
+	local net=$1; shift
+	local fname="$1"; shift # data filename
+	local end=$(( $# / 2 ))
+	# end of params
+
+	# data filename base without extension
+	local fbase
+	fbase=$(basename $fname)
+	fbase="${fbase%.*}"
+
+	(
+		# pull output data files from node
+		local cmds=()
+		local n
+		local i
+		for (( i = 0; i < $end; i++ )); do
+			n=$1; shift
+			cmds+=("$1"); shift
+			fl_node_pull $arch $net $n $(data_dir $n) $(dirname $fname) || true
+		done
+
+		# prepend standard prefix to output files without it
+		local f
+		local b
+		for f in $(dirname $fname)/*; do
+			b=$(basename $f)
+			if [[ $b != batch-* ]]; then
+				mv "$f" "$(dirname $fname)/$fbase.$b" || exit 1
+			fi
+		done
+
+		# run process hooks serially in case hooks depend on one another
+		local c
+		for c in "${cmds[@]}"; do
+			eval "PHASE=process; $c" || exit 1
+		done
+	) 2>&1 | tee "$(dirname $fname)/$fbase.process.log"
+}
+
+
+#############################################################################
+#
+# HARNESS FUNCTIONS AND HOOKS
+#
+#
+
+# tcp_metrics flushes and displays ip tcp_metrics
+tcp_metrics() {
+	case $PHASE in
+	init|teardown)
+		evq ip tcp_metrics flush || return
+		;;
+	show*)
+		ev ip tcp_metrics show || return
+		;;
+	esac
+}
+
+# run_tcpdump runs tcpdump on specified interfaces
+run_tcpdump() {
+	local dir=bidir
+	local params
+
+	# parse args
+	local a
+	while true; do
+		a="$1"
+		shift
+		case $a in
+			bidir|left|right)
+				dir=$a
+				shift
+				;;
+			*)
+				params="$@"
+				break
+				;;
+		esac
+	done
+
+	killpids() {
+		shopt -s nullglob
+		local f
+		for f in $(data_dir $node)/*.pid; do
+			local pid=$(cat $f)
+			kill $pid &> /dev/null || true
+			while kill -0 $pid 2> /dev/null; do sleep 0.2; done;
+			rm -f "$f"
+		done
+		shopt -u nullglob
+	}
+
+	case $PHASE in
+		setup)
+			killpids
+			local b
+			local dev
+			for dev in $(node_devs $arch $net $node $dir); do
+				b="$(data_dir $node)/tcpdump_${node}_$dev"
+				nohup tcpdump -i $dev -n -G 120 -W 1 -s 128 -w "$b.pcap" $params &> "$b.log" &
+				echo $! > "$b.pid"
+			done
+			;;
+		init|teardown)
+			killpids
+			;;
+	esac
+}
+
+# kernel_info cats any kernel info recorded by build process
+kernel_info() {
+	case $PHASE in
+	show_setup)
+		ev uname -a
+		cat /boot/info-$(uname -r).txt || true
+		;;
+	esac
+}
+
+# run_scetrace runs scetrace on any pcaps
+run_scetrace() {
+	local dir="$1"
+
+	case $PHASE in
+	process)
+		if ! type scetrace &> /dev/null; then
+			echo "+ scetrace: not found"
+			return
+		fi
+	
+		shopt -s nullglob
+		for f in $dir/*.pcap; do
+			local j="${f%.pcap}.json"
+			if ! [ -f "$j" ]; then
+				ev scetrace -r \"$f\" \> \"$j\"
+			fi
+		done
+		shopt -u nullglob
+	esac
+}
+
+# compress compresses pcaps and log files
+compress() {
+	local dir="$1"
+
+	case $PHASE in
+	process)
+		if type parallel &> /dev/null; then
+			parallel $COMPRESS ::: $dir/*.pcap $dir/*.debug.log
+		else
+			$COMPRESS $dir/*.pcap $dir/*.debug.log
+		fi
+	esac
+}
+
+# qdisc configures qdiscs
+qdisc() {
+	# parse params in loop
+	local ingress
+	local dir=bidir
+	local qdisc_type
+	local after
+	local htb_rate
+	local ingress_flowid="1:1"
+	local idev
+	local a
+	while true; do
+		a="$1"
+		shift
+		case $a in
+			root|root-tree)
+				qdisc_type=$a
+				break
+				;;
+			htb)
+				qdisc_type=htb
+				htb_rate=$1
+				shift
+				break
+				;;
+			rttfair)
+				qdisc_type=rttfair
+				break
+				;;
+			ingress)
+				ingress=true
+				;;
+			ingress-flowid)
+				ingress_flowid=$1
+				shift
+				;;
+			bidir|left|right)
+				dir=$a
+				;;
+			after)
+				after=$1; shift
+				;;
+			*)
+				>&2 echo "unrecognized qdisc keyword: $a"
+				return 1
+				;;
+		esac
+	done
+	# end of params
+
+	# select tc
+	local tc
+	tc=$(arch_tc $arch)
+	local idev
+	local qdev
+
+	for dev in $(node_devs $arch $net $node $dir); do
+		if [[ $ingress ]]; then
+			idev=$(ifb $dev)
+			qdev=$idev
+		else
+			qdev=$dev
+		fi
+
+		case $PHASE in
+		setup)
+			if [[ $ingress ]]; then
+				modprobe ifb || return $?
+				evq ip link add dev $idev type ifb || return $?
+			fi
+
+			case $qdisc_type in
+			root)
+				if ! [[ $after ]]; then
+					ev $tc qdisc add dev $qdev root handle 1: $@ || return $?
+				else
+					local dlog
+					local p="$@"
+					local ch_op
+
+					dlog="$(data_dir $node)/${node}_${qdev}_root_after_${after}s.log" || \
+						return $?
+
+					nohup bash -x -s <<- EndOfAfterRoot &> $dlog &
+						set -e
+						root_qdisc() {
+							tc qdisc show dev $qdev | head -1 | awk '{print \$2}'
+						}
+						root_handle() {
+							tc qdisc show dev $qdev | head -1 | awk '{print \$3}'
+						}
+						sleep $after
+						rh=\$(root_handle)
+						if [[ \$(root_qdisc) == $1 ]]; then
+							$tc qdisc change dev $qdev handle \$rh root $p
+						else
+							$tc qdisc replace dev $qdev root $p
+						fi
+					EndOfAfterRoot
+					echo $! > "$dlog.pid" || return $?
+				fi
+				;;
+			htb)
+				if ! [[ $after ]]; then
+					ev $tc qdisc add dev $qdev handle 1: root htb default 1 || return $?
+					ev $tc class add dev $qdev parent 1: classid 1:1 \
+						htb rate $htb_rate ceil $htb_rate || return $?
+					ev $tc qdisc add dev $qdev parent 1:1 $@ || return $?
+				else
+					local dlog
+					dlog="$(data_dir $node)/${node}_${qdev}_htb_after_${after}s.log" \
+						|| return $?
+					local p="$@"
+
+					nohup bash -x -s <<- EndOfAfterHTB &> $dlog &
+						set -e
+						root_qdisc() {
+							tc qdisc show dev $qdev | head -1 | awk '{print \$2}'
+						}
+						root_handle() {
+							tc qdisc show dev $qdev | head -1 | awk '{print \$3}'
+						}
+						child_qdisc() {
+							local n=\$1
+							# end of params
+					
+							tc qdisc show dev $qdev | sed "\$((n+1))q;d" | awk '{print \$2}'
+						}
+						sleep $after
+						if [[ \$(root_qdisc) == htb ]]; then
+							$tc class change dev $qdev parent 1: classid 1:1 \
+								htb rate $htb_rate ceil $htb_rate
+							if test -n "$p"; then
+								if [[ \$(child_qdisc 1) == "$1" ]]; then
+									ch_op=change
+								else
+									ch_op=replace
+								fi
+								$tc qdisc \$ch_op dev $qdev parent 1:1 $p
+							fi
+						else
+							$tc qdisc replace dev $qdev root htb default 1
+							rh=\$(root_handle)
+							$tc class add dev $qdev parent \$rh classid \${rh}1 \
+								htb rate $htb_rate ceil $htb_rate
+							$tc qdisc add dev $qdev parent \${rh}1 $@
+						fi
+					EndOfAfterHTB
+					echo $! > "$dlog.pid" || return $?
+				fi
+				;;
+			root-tree)
+				ev $tc qdisc add dev $qdev root handle 1: $1 || return $?
+				local m=10
+				local i
+				for (( i=2; i<=$#; i++ )); do
+					ev $tc qdisc add dev $qdev parent 1:1 handle $m:1 ${!i} || return $?
+					((m++))
+				done
+				;;
+			rttfair)
+				# note that this should really be done more generically, to allow the
+				# the addition of arbitrary qdiscs, classes and filters
+				local delay1=$1
+				local delay2=$2
+				local dscp1=$3
+				local dscp2=$4
+				ingress_flowid= # let filters decide
+
+				ev $tc qdisc add dev $qdev root handle 1: htb default 10 || return $?
+				ev $tc class add dev $qdev parent 1: classid 1:1 htb rate 2gbps || return $?
+				ev $tc class add dev $qdev parent 1: classid 1:10 htb rate 1gbps ceil 2gbps || return $?
+				ev $tc class add dev $qdev parent 1: classid 1:11 htb rate 1gbps ceil 2gbps || return $?
+				ev $tc qdisc add dev $qdev parent 1:10 netem delay ${delay1} limit 10000 || return $?
+				ev $tc qdisc add dev $qdev parent 1:11 netem delay ${delay2} limit 10000 || return $?
+				ev $tc filter add dev $qdev parent 1: protocol ip prio 1 \
+					u32 match ip tos ${dscp1} 0xfc flowid 1:10 || return $?
+				ev $tc filter add dev $qdev parent 1: protocol ip prio 1 \
+					u32 match ip tos ${dscp2} 0xfc flowid 1:11 || return $?
+				#ev $tc filter add dev $qdev parent 1: protocol all prio 10 \
+				#	u32 match u32 0 0 flowid 1:1 || return $?
+				;;
+			esac
+
+			if [[ $ingress ]]; then
+				local flowid=
+				evq $tc qdisc add dev $dev handle ffff: ingress || return $?
+				evq ip link set $idev up || return $?
+				evq $tc filter add dev $dev parent ffff: protocol all \
+					prio 10 u32 match u32 0 0 \
+					$([[ $ingress_flowid ]] && echo flowid $ingress_flowid) \
+					action mirred egress redirect dev $idev || return $?
+			fi
+			;;
+		init|teardown)
+			if [[ $ingress ]]; then
+				evq $tc qdisc del dev $dev ingress || true
+				evq $tc qdisc del dev $idev root || true
+				evq ip link del dev $idev || true
+			else
+				evq $tc qdisc del dev $dev root || true
+			fi
+			;;
+		show*)
+			ev $tc -s -d qdisc show dev $qdev || true
+			ev $tc -s -d class show dev $qdev || true
+			;;
+		esac
+	done
+}
+
+# set_tos adds a rule to set the tos value for all packets on an interface
+set_tos() {
+	local ifaces="$1"; shift
+	local tos="$1"
+	local args="-o $i -p tcp -m tcp ! --syn -j TOS --set-tos $tos"
+
+	for i in $(split $ifaces); do
+		case $PHASE in
+		setup)
+			evq iptables -t mangle -I POSTROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D POSTROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L POSTROUTING -n || return $?
+			;;
+		esac
+	done
+}
+
+# dscp_to_tos adds an iptables rule to change a dscp to tos value
+dscp_to_tos() {
+	local ifaces="$1"; shift
+	local dscp="$1"; shift
+	local tos="$1"; shift
+	local args="-o $i -p tcp -m tcp ! --syn -m dscp --dscp $dscp -j TOS --set-tos $tos"
+
+	for i in $(split $ifaces); do
+		case $PHASE in
+		setup)
+			evq iptables -t mangle -I POSTROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D POSTROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L POSTROUTING -n || return $?
+			;;
+		esac
+	done
+}
+
+# ect1_to_ect0 changes ECT(1) to ECT(0) for non-SYN packets
+ect1_to_ect0() {
+	local dir="$1"
+	# end of params
+
+	local args
+	for dev in $(node_devs $arch $net $node $dir); do
+		args="-o $dev -p tcp -m tcp ! --syn -m ecn --ecn-ip-ect 1 -j TOS --set-tos 2"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -I POSTROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D POSTROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L POSTROUTING -n || return $?
+			;;
+		esac
+	done
+}
+
+# ect0_to_ect1 changes ECT(0) to ECT(1) for non-SYN packets on input
+ect0_to_ect1() {
+	local dir="$1"
+	# end of params
+
+	local args
+	for dev in $(node_devs $arch $net $node $dir); do
+		args="-p tcp -m tcp ! --syn -m ecn --ecn-ip-ect 2 -j TOS --set-tos 1 -m physdev --physdev-in $dev"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -I INPUT $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D INPUT $args || return $?
+			;;
+		show*)
+			ev iptables -t mangle -L INPUT -n || return $?
+			;;
+		esac
+	done
+}
+
+# bleach_ce bleaches the CE codepoint to 0 for traffic with the specified DSCP
+bleach_ce() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args
+	for dev in $(node_devs $arch $net $node $dir); do
+		args="-i $dev -p tcp -m tcp ! --syn -m dscp --dscp $dscp -m ecn --ecn-ip-ect 3 -j TOS --set-tos 0"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -I PREROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
+			;;
+		esac
+	done
+}
+
+# dscp_to_notect disables ECN on packets with a DSCP
+dscp_to_notect() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args_ecn_remove
+	local args_ect1
+	for dev in $(node_devs $arch $net $node $dir); do
+		args_ecn_remove="-p tcp -m tcp -m dscp --dscp $dscp -m physdev --physdev-in $dev -j ECN --ecn-tcp-remove"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -A PREROUTING $args_ecn_remove || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args_ecn_remove || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
+			;;
+		esac
+	done
+}
+
+# dscp_to_notect_ect1 disables ECN then sets ECT(1) on packets with a DSCP
+dscp_to_notect_ect1() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args_ecn_remove
+	local args_ect1
+	for dev in $(node_devs $arch $net $node $dir); do
+		args_ecn_remove="-p tcp -m tcp -m dscp --dscp $dscp -m physdev --physdev-in $dev -j ECN --ecn-tcp-remove"
+		args_ect1="-p tcp -m dscp --dscp $dscp -m physdev --physdev-in $dev -j TOS --set-tos 1"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -A PREROUTING $args_ecn_remove || return $?
+			ev iptables -t mangle -A PREROUTING $args_ect1 || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args_ect1 || true
+			evq iptables -t mangle -D PREROUTING $args_ecn_remove || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
+			;;
+		esac
+	done
+}
+
+# dscp_to_ect1 sets ECT(1) on packets with a DSCP
+dscp_to_ect1() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args_ecn_remove
+	local args_ect1
+	for dev in $(node_devs $arch $net $node $dir); do
+		args_ect1="-p tcp -m tcp ! --syn -m dscp --dscp $dscp -m physdev --physdev-in $dev -j TOS --set-tos 1"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -A PREROUTING $args_ect1 || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args_ect1 || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
+			;;
+		esac
+	done
+}
+
+# bleach_ecn bleaches the ECN field to 0 for traffic with the specified DSCP
+bleach_ecn() {
+	local dir="$1"; shift
+	local dscp="$1"; shift
+	# end of params
+
+	local args
+	for dev in $(node_devs $arch $net $node $dir); do
+		args="-m physdev --physdev-in $dev -p tcp -m dscp --dscp $dscp -j TOS --set-tos 0"
+		case $PHASE in
+		setup)
+			ev iptables -t mangle -I PREROUTING $args || return $?
+			;;
+		init|teardown)
+			evq iptables -t mangle -D PREROUTING $args || true
+			;;
+		show*)
+			ev iptables -t mangle -L PREROUTING -n -v || return $?
+			;;
+		esac
+	done
+}
+
+
+#############################################################################
+#
+# CLI FUNCTIONS
+#
+#
+
+# clean command removes non-tagged test result directories
+cli_clean() {
+	local what=$1
+	# end of params
+
+	clean_clients() {
+		local pids=()
+		local d
+		for d in "${CLIENTS_SSH[@]}"; do
+			fl_ssh $d false false remote_clean &
+			pids+=($!)
+		done
+		wait_for_pids ${pids[@]}
+	}
+
+	clean_archive() {
+		ssh $PUSH_SSH_ARGS $PUSH_SSH_DEST cd $ARCHIVE_DIR\; rm -fr $BATCH_OUT_SPEC
+	}
+
+	clean_local() {
+		remote_clean
+	}
+
+	case $what in
+		clients)
+			clean_clients
+			;;
+		all)
+			clean_clients
+			clean_archive
+			clean_local
+			;;
+		archive)
+			clean_archive
+			;;
+		local)
+			clean_local
+			;;
+		"")
+			>&2 echo "clean requires an argument: local, clients, archive or all"
+			return 1
+			;;
+		*)
+			>&2 echo "can't clean $1 (just local, clients, archive or all)"
+			return 1
+			;;
+	esac
+}
+
+# list command lists results
+cli_list() {
+	local d
+	for d in "${CLIENTS_SSH[@]}"; do
+		fl_ssh $d false false remote_list
+	done
+}
+
+# browse command opens results in the browser
+cli_browse() {
+	local result=$1
+	# end of params
+
+	local url="$ARCHIVE_URL/$result"
+
+	if [[ $BROWSER ]]; then
+		$BROWSER "$url" &
+	elif command -v xdg-open >& /dev/null; then
+		xdg-open "$url" >& /dev/null
+	elif [[ $OSTYPE =~ darwin ]]; then
+		open -a Safari "$url"
+	fi
+}
+
+# plot command generates plots
+cli_plot() {
+	local spec="${1:-$BATCH_OUT_SPEC}"
+	# end of params
+
+	local errs=0
+	local d
+	local a
+
+	for a in "${ARCHS[@]}"; do
+		d=$(node_ssh $a cli)
+		fl_ssh $d false false remote_plot $a "$spec" || ((errs++))
+	done
+
+	return $errs
+}
+
+# gen_table command generates a markdown table for a results directory
+cli_gen_table() {
+	local scenario="$1"
+	local verify="$2"
+	# end of params
+
+	if [[ ! $scenario ]]; then
+		echo "The table command requires the scenario as an argument, e.g. s1."
+		return 1
+	fi
+
+	local base_url="$RESULTS_URL/$RESULTS_DIR"
+
+	emit_header() {
+		local header="$1"
+		echo "$header"
+		header=${header//[! |]/-}
+		echo "$header"
+	}
+
+  emit_row() {
+		local c
+		echo -n "$1"
+		for c in "${@:2}"; do
+			echo -n " | $c"
+		done
+		echo
+	}
+
+	links() {
+		local arch=$1
+		# end of params
+
+		local urlv="${scenario}_${arch}_url"
+		local purlv="${scenario}_${arch}_plot_url"
+
+		echo -n "[plot](${!purlv})"
+		echo -n " - [cli.pcap](${!urlv}.tcpdump_cli_cli.r.pcap.xz)"
+		echo -n " - [srv.pcap](${!urlv}.tcpdump_srv_srv.l.pcap.xz)"
+		echo -n " - [teardown](${!urlv}.teardown.log)"
+	}
+
+	verify_url() {
+		local url="$1"
+		# end of params
+		if [[ $verify ]]; then
+			curl -f --head "$url" >&/dev/null
+			if (($? != 0)); then
+				>&2 echo url $url not found
+			fi
+		fi
+	}
+
+	burl() {
+		local arch=$1
+		echo "$base_url/$arch-$sname"
+	}
+
+	# scenario 1
+	s1_emit_table() {
+		local sname="s1-rttfair"
+		emit_header "Bandwidth | RTTs | qdisc | vs | [L4S]($(burl l4s)/)"
+		local bw rtt qdisc vs
+		for bw in 50 10; do
+			for rtts in 10ms-10ms 20ms-20ms 80ms-80ms 20ms-10ms 80ms-20ms 160ms-10ms; do
+				for qdisc in dualpi2 pfifo fq_codel cnq_codel_af; do
+					for vs in cubic-vs-cubic prague-vs-prague cubic-vs-prague prague-vs-cubic; do
+						local qdisc_fname=$qdisc
+						if [[ $qdisc == "pfifo" ]]; then
+							if [[ $bw == 50 ]]; then
+								qdisc_fname="${qdisc}_1000_"
+							elif [[ $bw == 10 ]]; then
+								qdisc_fname="${qdisc}_200_"
+							fi
+						fi
+						local s1_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$vs-$qdisc_fname-${bw}Mbit-$rtts"
+						local s1_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$vs-$qdisc_fname-${bw}Mbit-${rtts}_tcp_delivery_with_rtt.svg"
+		
+						verify_url "$s1_l4s_url.log"
+						verify_url "$s1_l4s_plot_url"
+		
+						emit_row ${bw}Mbit \
+							$rtts \
+							$qdisc \
+							$vs \
+							"$(links l4s)"
+					done
+				done
+			done
+		done
+	}
+
+	# scenario 2
+	s2_emit_table() {
+		local sname="s2-codel-rate-step"
+		emit_header "Burstiness | Bandwidth1 | RTT | qdisc | CC | [L4S]($(burl l4s)/)"
+		local bw1 rtt qdisc cc burstiness
+		for burstiness in clean bursty; do
+			for bw1 in 25 10 5 1; do
+				for rtt in 20 80; do
+					for qdisc in dualpi2 fq_codel; do
+						for cc in cubic prague; do
+						local s2_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$burstiness-$cc-$qdisc-50Mbit-${bw1}mbit-${rtt}ms"
+						local s2_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$burstiness-$cc-$qdisc-50Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+		
+						verify_url "$s2_l4s_url.log"
+						verify_url "$s2_l4s_plot_url"
+		
+						emit_row $burstiness \
+							${bw1}Mbit \
+							$rtt \
+							$qdisc \
+							$cc \
+							"$(links l4s)"
+						done
+					done
+				done
+			done
+		done
+	}
+
+	# scenario 3
+	s3_emit_table() {
+		local sname="s3-codel-variable-rate"
+		emit_header "Burstiness | RTT | qdisc | CC | [L4S]($(burl l4s)/)"
+		local bw1 rtt qdisc cc burstiness
+		for burstiness in not_bursty bursty; do
+			for rtt in 20 80; do
+				for qdisc in dualpi2 fq_codel; do
+					for cc in cubic prague; do
+					local s3_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$burstiness-$cc-$qdisc-100Mbit-${rtt}ms"
+					local s3_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$burstiness-$cc-$qdisc-100Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+	
+					verify_url "$s3_l4s_url.log"
+					verify_url "$s3_l4s_plot_url"
+	
+					emit_row $burstiness \
+						$rtt \
+						$qdisc \
+						$cc \
+						"$(links l4s)"
+					done
+				done
+			done
+		done
+	}
+
+	# scenario 5
+	s5_emit_table() {
+		local sname="s5-tunnel"
+		emit_header "Tunnel | RTT | qdisc | vs | [L4S]($(burl l4s)/)"
+		local tunnel vs
+		for tunnel in wireguard ipfou; do
+			for vs in prague-vs-cubic prague-vs-reno; do
+			local s5_l4s_url="$(burl l4s)/batch-l4s-$sname-phys-$tunnel-$vs-fq_codel-50Mbit-20ms"
+			local s5_l4s_plot_url="$(burl l4s)/l4s-$sname-phys-$tunnel-$vs-fq_codel-50Mbit-20ms_tcp_delivery_with_rtt.svg"
+
+			verify_url "$s5_l4s_url.log"
+			verify_url "$s5_l4s_plot_url"
+
+			emit_row $tunnel \
+				20ms \
+				fq_codel \
+				$vs \
+				"$(links l4s)"
+			done
+		done
+	}
+
+	# scenario 6
+	s6_emit_table() {
+		local sname="s6-rfc3168"
+		emit_header "RTT | qdisc | vs | ECN | [L4S]($(burl l4s)/)"
+		local tunnel vs
+		for qdisc in fq_codel_1q_ fq_codel_1q_1ms_20ms_ pie pie_100p_5ms_ \
+			red_150000b_ red_400000b_; do
+			for vs in prague-vs-cubic prague-vs-reno; do
+				for ecn in ecn noecn; do
+				local s6_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-$vs-$ecn-$qdisc-50Mbit-20ms"
+				local s6_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-$vs-$ecn-$qdisc-50Mbit-20ms_tcp_delivery_with_rtt.svg"
+		
+				verify_url "$s6_l4s_url.log"
+				verify_url "$s6_l4s_plot_url"
+		
+				emit_row $tunnel \
+					20ms \
+					$qdisc \
+					$vs \
+					$ecn \
+					"$(links l4s)"
+			  done
+			done
+		done
+	}
+
+#	# scenario 2
+#	s2_emit_table() {
+#		local sname="s2-twoflow"
+#		emit_header "RTT | qdisc | [SCE]($(burl sce)/)"
+#		local rtt qdisc
+#		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) lfq_cobalt \
+#			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
+#			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\) \
+#			twin_codel_af; do
+#			for rtt in 20 80 160; do
+#				local qdiscf=${qdisc//[\(\)\/]/_}
+#				local s2_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms"
+#				local s2_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-vs-cubic-sce-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#				verify_url "$s2_sce_url.log"
+#				verify_url "$s2_sce_plot_url"
+#
+#				emit_row ${rtt}ms \
+#					${qdisc} \
+#					"$(links sce)"
+#			done
+#		done
+#
+#		echo
+#
+#		emit_header "RTT | qdisc | [L4S]($(burl l4s)/)"
+#		for qdisc in codel1q codel1q\(40ms\) codel1q\(20ms\) dualpi2 \
+#			pfifo\(1000\) pfifo\(50\) pie pie\(1000p/20ms\) pie\(100p/20ms\) \
+#			pie\(100p/5ms\) pie\(noecn\) red\(150000\) red\(400000\); do
+#			for rtt in 20 80 160; do
+#				local qdiscf=${qdisc//[\(\)\/]/_}
+#				local s2_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms"
+#				local s2_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-cubic-vs-prague-${qdiscf}-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s2_l4s_url.log"
+#				verify_url "$s2_l4s_plot_url"
+#	
+#				emit_row ${rtt}ms \
+#					${qdisc} \
+#					"$(links l4s)"
+#			done
+#		done
+#	}
+#
+#	# scenario 3
+#	s3_emit_table() {
+#		local sname="s3-bottleneck-shift"
+#		emit_header "RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local bw rtt
+#		bw=50
+#		for rtt in 20 80; do
+#			local s3_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms"
+#			local s3_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#			local s3_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms"
+#			local s3_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#			verify_url "$s3_sce_url.log"
+#			verify_url "$s3_sce_plot_url"
+#			verify_url "$s3_l4s_url.log"
+#			verify_url "$s3_l4s_plot_url"
+#
+#			emit_row \
+#				${rtt}ms \
+#				"$(links sce)" \
+#				"$(links l4s)"
+#		done
+#	}
+
+	# scenario 4
+#	s4_emit_table() {
+#		local sname="s4-capacity-reduction"
+#		emit_header "Bandwidth1 | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local bw bw1 rtt
+#		bw=50
+#		for bw1 in 40 5; do
+#			for rtt in 20 80; do
+#				local s4_sce_url="$(burl sce)/batch-sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms"
+#				local s4_sce_plot_url="$(burl sce)/sce-$sname-ns-reno-sce-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#				local s4_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms"
+#				local s4_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-${bw}Mbit-${bw1}mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s4_sce_url.log"
+#				verify_url "$s4_sce_plot_url"
+#				verify_url "$s4_l4s_url.log"
+#				verify_url "$s4_l4s_plot_url"
+#	
+#				emit_row ${bw1}Mbit \
+#					${rtt}ms \
+#					"$(links sce)" \
+#					"$(links l4s)"
+#			done
+#		done
+#	}
+#
+#	# scenario 5
+#	s5_emit_table() {
+#		local sname="s5-burstiness"
+#		emit_header "qdisc | RTT | [SCE]($(burl sce)/)"
+#		local bw qdisc rtt
+#		bw=50
+#		for qdisc in cake twin_codel_af; do
+#			for rtt in 20 80; do
+#				local s5_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms"
+#				local s5_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-${qdisc}-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s5_sce_url.log"
+#				verify_url "$s5_sce_plot_url"
+#	
+#				emit_row ${qdisc} \
+#					${rtt}ms \
+#					"$(links sce)"
+#			done
+#		done
+#
+#		echo
+#
+#		emit_header "qdisc | RTT | [L4S]($(burl l4s)/)"
+#		qdisc=dualpi2
+#		for rtt in 20 80; do
+#			local s5_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms"
+#			local s5_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms_tcp_delivery_with_rtt.svg"
+#
+#			verify_url "$s5_l4s_url.log"
+#			verify_url "$s5_l4s_plot_url"
+#
+#			emit_row ${qdisc} \
+#				${rtt}ms \
+#				"$(links l4s)"
+#		done
+#	}
+#
+#	# scenario 6
+#	s6_emit_table() {
+#		local sname="s6-jitter"
+#		emit_header "netem-jitter-params | RTT | [SCE]($(burl sce)/) | [L4S]($(burl l4s)/)"
+#		local rtt bw njp njpf
+#		rtt=80
+#		bw=50
+#		for njp in "2ms 1ms 10%" "4ms 2ms 10%" "10ms 5ms 10%"; do
+#				local njpf=${njp//[ %]/_}
+#				local s6_sce_url="$(burl sce)/batch-sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
+#				local s6_sce_plot_url="$(burl sce)/sce-$sname-ns-cubic-sce-twin_codel_af-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
+#				local s6_l4s_url="$(burl l4s)/batch-l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}"
+#				local s6_l4s_plot_url="$(burl l4s)/l4s-$sname-ns-prague-dualpi2-${bw}Mbit-${rtt}ms-netem_delay_${njpf}_tcp_delivery_with_rtt.svg"
+#	
+#				verify_url "$s6_sce_url.log"
+#				verify_url "$s6_sce_plot_url"
+#				verify_url "$s6_l4s_url.log"
+#				verify_url "$s6_l4s_plot_url"
+#	
+#				emit_row "${njp}" \
+#					${rtt}ms \
+#					"$(links sce)" \
+#					"$(links l4s)"
+#		done
+#	}
+
+	# select function to run from scenario
+	local sfunc="${scenario}_emit_table"
+	if type -t $sfunc >&/dev/null; then
+		$sfunc
+	else
+		echo "$scenario table not implemented"
+	fi
+}
+
+# gen_readme command generates README.md from README.tpl.md
+cli_gen_readme() {
+	plot_url() {
+		local batch_dir="$1"
+		local suffix="$2"
+		echo "$RESULTS_URL/$RESULTS_DIR/$batch_dir/$batch_dir-$suffix"
+	}
+
+	chart_url() {
+		local dir="$1"
+		local filename="$2"
+		echo "$RESULTS_URL/$RESULTS_DIR/$dir/$filename"
+	}
+
+	plot_link() {
+		local text="$1"
+		local batch_dir="$2"
+		local suffix="$3"
+		echo "[$text]($(plot_url "$2" "$3"))"
+	}
+
+	batch_url() {
+		local batch_dir="$1"
+		local suffix="$2"
+		echo "$RESULTS_URL/$RESULTS_DIR/$batch_dir/batch-$batch_dir-$suffix"
+	}
+
+	batch_link() {
+		local text="$1"
+		local batch_dir="$2"
+		local suffix="$3"
+		echo "[$text]($(batch_url "$2" "$3"))"
+	}
+
+	plot_inline() {
+		local text="$1"
+		local batch_dir="$2"
+		local suffix="$3"
+		echo "![$text]($(plot_url "$2" "$3"))"
+	}
+
+	chart_link() {
+		local text="$1"
+		local dir="$2"
+		local filename="$3"
+		echo "[$text]($(chart_url "$2" "$3"))"
+	}
+
+	chart_inline() {
+		local text="$1"
+		local dir="$2"
+		local filename="$3"
+		echo "![$text]($(chart_url "$2" "$3"))"
+	}
+
+	eval "cat << EndOfREADME
+$(<README.tpl.md)
+EndOfREADME
+"
+}
+
+# push command pushes results to repo
+cli_push() {
+	local batch_title="$1"
+	# end of params
+
+	local pids=()
+	local d
+	for d in "${CLIENTS_SSH[@]}"; do
+		fl_ssh $d false false remote_push_result $batch_title &
+		pids+=($!)
+	done
+
+	wait_for_pids ${pids[@]}
+}
+
+# pull command pulls results
+cli_pull() {
+	local batch_title="${1:-$BATCH-????-??-?????????}"
+	local pcaps="$2"
+	# end of params
+
+	pcap_arg() {
+		[[ $pcaps == "-p" ]] && echo "--exclude *pcap*"
+	}
+
+	local pids=()
+	local d
+	for d in "${CLIENTS_SSH[@]}"; do
+		rsync \
+			-rtv $(pcap_arg) \
+			--exclude 'README.md' \
+			--exclude 'README.tpl.md' \
+			--exclude 'flent.out' \
+			--exclude 'config' \
+			--ignore-missing-args \
+			$d:$SCRIPT_DIR/$batch_title . &
+		pids+=($!)
+	done
+
+	wait_for_pids ${pids[@]}
+}
+
+# run command runs flent, generates plots and pushes results
+cli_run() {
+	# parse options
+	opts=$(getopt -o nqub -- "$@")
+	if (( $? != 0 )); then
+		cat <<- EndOfRunUsage >&2
+		fl run [-n] [-q] [-u] pattern
+
+		-n: noop (dry run)
+		-q: don't send complete notification
+		-u: push to www server
+
+		pattern: test regex or all
+		EndOfRunUsage
+		return 1
+	fi
+
+	local dry=false
+	local push=false
+	local quiet=false
+	eval set -- "$opts"
+	while true; do
+		case "$1" in
+			-n) dry=true ;;
+			-q) quiet=true ;;
+			-u) push=true ;;
+			--) shift
+				break
+				;;
+		esac
+		shift
+	done
+
+	local pattern="${1:-all}"
+	# end of params
+
+	# send_complete sends a pushover message after run completes
+	send_complete() {
+		local status=$1
+		# end of params
+	
+		local sound
+		local msg
+	
+		stohms() {
+			date -d@$1 -u +%H:%M:%S
+		}
+	
+		if (( status == 0 )); then
+			sound=$PUSHOVER_SOUND_SUCCESS
+			msg="Flent run on $(hostname) successful in $(stohms $SECONDS)!"
+		else
+			sound=$PUSHOVER_SOUND_FAILURE
+			msg="Flent run on $(hostname) failed with status $status in $(stohms $SECONDS)."
+		fi
+
+		send_pushover $sound "$msg" || true
+	}
+
+	# run tests
+	local batch_title="l4s-$(date +%Y-%m-%dT%H%M%S)"
+	local r
+	local d
+	local a
+	for a in ${ARCHS[@]}; do
+		d=$(node_ssh $a cli)
+		fl_ssh $d false false remote_run_flent $a $batch_title $pattern $dry
+		r=$?
+		if (( r != 0 )) && [[ $dry == false ]] && [[ $quiet == false ]]; then
+			send_complete $r
+			return $r
+		fi
+	done
+
+	local errs=0
+	if [[ $dry == false ]]; then
+		# generate plots
+		cli_plot $batch_title || ((errs++))
+
+		# push results
+		if [[ $push == true ]]; then
+			cli_push $batch_title || ((errs++))
+			if (( $? == 0 )); then
+				cli_browse $batch_title
+			else
+				((errs++))
+			fi
+		fi
+
+		# send notification
+		[[ $quiet == false ]] && send_complete $errs
+	fi
+
+	return $errs
+}
+
+# hello command emits message for testing
+cli_hello() {
+	local d
+	local pids=()
+	local errs=0
+	local p
+
+	case $1 in
+		clients)
+			for d in ${CLIENTS_SSH[@]}; do
+				fl_ssh $d false false remote_hello &
+				pids+=($!)
+			done
+			wait_for_pids ${pids[@]}
+			;;
+		all)
+			for d in ${FL_SSH[@]}; do
+				fl_ssh $d false false remote_hello &
+				pids+=($!)
+			done
+			wait_for_pids ${pids[@]}
+			;;
+		*)
+			remote_hello
+			;;
+	esac
+}
+
+# pushover command sends a test pushover message
+cli_pushover() {
+	send_pushover $PUSHOVER_SOUND_SUCCESS "test pushover message"
+}
+
+
+#############################################################################
+#
+# COMMAND LINE INTERFACE (ONLY FOR HUMANS)
+#
+#
+
+# run_cli runs the command line interface
+run_cli() {
+	# usage displays usage and exits
+	usage() {
+		cat <<- EndOfUsage >&2
+		fl [-l] [-m] [-b] command
+		
+		-l: run locally, without updating remote hosts
+		-m: run commands via ssh on management host
+		-b: run commands in background
+		-h: show usage
+		EndOfUsage
+		exit 1
+	}
+
+	# parse command line arguments
+	local o
+	local mgmt
+	local sync=true
+	local background
+	mgmt=false
+	background=false
+	while getopts ":lmbh" o; do
+		case "$o" in
+			l)
+				sync=false
+				;;
+			m)
+				mgmt=true
+				;;
+			b)
+				background=true
+				;;
+			*)
+				usage
+				;;
+		esac
+	done
+	shift $((OPTIND-1))
+
+	# run usage if no args
+	[[ ! $@ ]] && usage
+
+	# sync source files on hosts that need it
+	local md5sum
+
+	# only sync if md5sum of local tar changes
+	md5sum=$(tar \
+		-C $SOURCE_DIR \
+		--exclude="./.*" \
+		--exclude="$BATCH-????-??-?????????" \
+		--exclude="private/*" \
+		-cf - . | md5sum)
+	if [[ -f .md5sum ]]; then
+		[[ $(< .md5sum) == $md5sum ]] && sync=false
+	fi
+
+	# sync with rsync, if necessary
+	if [[ $sync == true ]]; then
+		local pids=()
+		local d
+		for d in "${FL_SSH[@]}"; do
+			rsync \
+				--exclude=".*" \
+				--exclude="$BATCH-????-??-?????????" \
+				-rt \
+				$SOURCE_DIR $d:$SCRIPT_DIR 2>&1 | sed "s/^/$d: /" &
+			pids+=($!)
+		done
+		wait_for_pids ${pids[@]}
+		local r=$?
+		if (( r == 0 )); then
+			echo "$md5sum" > .md5sum
+		else
+			echo "unable to sync script to remote hosts, skipping"
+		fi
+	fi
+
+	# run locally or remotely
+	if [[ $mgmt == true ]]; then
+		fl_ssh $MGMT_SSH false $background "cli_$@"
+	else
+		if [[ $background == true ]]; then
+			eval "cli_$@" &> $SCRIPT_DIR/log.txt &
+		else
+			eval "cli_$@"
+		fi
+	fi
+
+	return $?
+}
+
+#############################################################################
+#
+# MAIN
+#
+#
+
+if [[ $1 =~ ^(cli|remote|flent)_ ]]; then # these prefixes run directly
+	eval "$@"
+elif [[ $1 =~ ^_debug_ ]]; then # _debug_ prefix for testing is stripped
+	eval "${@#_debug_}"
+else # regular cli
+	run_cli "$@"
+fi
