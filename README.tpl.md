@@ -338,9 +338,9 @@ A few notes about the CDF plot in *Figure 5* below:
 
 | Competition                       | Prague Steady-State Throughput | Unutilized Bandwidth | Utilization % |
 | -------------------------------------- | ------------------------------ | -------------------- | ------------- |
-| no competition                    | 18.5 Mbps ([plot](results/skype/tput/iperf3_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_prague_20mbps_160ms.pcap)) | - | - |
-| [2.5 Mbps Skype video traffic in L](#underutilization-with-bursty-traffic-in-l) | 2.4 Mbps ([plot](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap)) | 13.6 Mbps | 15% |
-| [2.5 Mbps Skype video traffic in C](#underutilization-with-bursty-traffic-in-c) | 12.5 Mbps ([plot](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap)) | 3.5 Mbps   | 78% |
+| no competition                    | 18.5 Mbps ([plot](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms.pcap.gz)) | - | - |
+| [2.5 Mbps Skype video traffic in L](#underutilization-with-bursty-traffic-in-l) | 2.4 Mbps ([plot](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap.gz)) | 13.6 Mbps | 15% |
+| [2.5 Mbps Skype video traffic in C](#underutilization-with-bursty-traffic-in-c) | 12.5 Mbps ([plot](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap.gz)) | 3.5 Mbps   | 78% |
 
 #### Underutilization with Bursty Traffic in L
 
