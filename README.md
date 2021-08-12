@@ -390,8 +390,8 @@ traffic.
 
 #### Utilization with Bursty Traffic (CUBIC in Codel)
 
-With CUBIC in a single Codel queue, Codel absorbs Skype's bursts without minimal
-spurious signalling, allowing CUBIC to fully utilize the available link
+With CUBIC in a single Codel queue, Codel absorbs Skype's bursts with little to
+no spurious signalling, allowing CUBIC to fully utilize the available link
 capacity.
 
 | CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Goodput<sub>backoff</sub> | Links |
