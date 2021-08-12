@@ -347,6 +347,7 @@ theoretical maximum goodput with Skype is the goodput without competition, minus
 1.79 Mbps for Skype.
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
+
 *Figure 6*
 
 #### Underutilization with Bursty Traffic (Prague in DualPI2)
