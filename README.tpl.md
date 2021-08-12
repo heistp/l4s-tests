@@ -334,41 +334,71 @@ A few notes about the CDF plot in *Figure 5* below:
 
 ### Underutilization with Bursty Traffic
 
-*Underutilization Results Summary:*
+Using a [real world test setup](#real-world-tests), we placed Skype video
+traffic (1.79 Mbps bitrate) in DualPI2(L), DualPI2(C) and Codel queues, and
+measured the utilization of CUBIC and Prague, relative to their goodput without
+Skype competition. While the bursty Skype traffic has little impact on
+conventional AQMs and CCAs, we see significantly reduced utilization for L4S
+Prague flows in DualPI2, both when Skype is in the L queue, or the C queue.
 
-| Competition                       | Prague Steady-State Throughput | Unutilized Bandwidth | Utilization % |
-| -------------------------------------- | ------------------------------ | -------------------- | ------------- |
-| no competition                    | 18.5 Mbps ([plot](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms.pcap.gz)) | - | - |
-| [2.5 Mbps Skype video traffic in L](#underutilization-with-bursty-traffic-in-l) | 2.4 Mbps ([plot](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap.gz)) | 13.6 Mbps | 15% |
-| [2.5 Mbps Skype video traffic in C](#underutilization-with-bursty-traffic-in-c) | 12.5 Mbps ([plot](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap.gz)) | 3.5 Mbps   | 78% |
+![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
-#### Underutilization with Bursty Traffic in L
+The bar chart above is taken from the data in the subsections that follow.
+Goodput is measured using relative TCP sequence number differences over time.
+Utilization is calculated using the CCA's goodput with Skype traffic, relative
+to the theoretical maximum goodput without Skype traffic (calculated from the
+measured goodput without Skype for the same CCA, minus 1.79 Mbps for Skype's
+measured average bitrate).
 
-Using a [real world test setup](#real-world-tests) with a 20 Mbps DualPI2
-bottleneck, we placed Skype video traffic (~2.5 Mbps bitrate) in the L
-queue, then ran a 160 ms RTT TCP Prague flow through the same bottleneck.
-Steady-state throughput was around 2.4 Mbps (*Figure 6*), which leaves
-13.6 Mbps of the bottleneck bandwidth unutilized, relative to the 
-~18.5 Mbps that Prague obtains
-without competition
-([pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap),
-[udp throughput](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_udp_tput.png)).
+#### Underutilization with Bursty Traffic (Prague in DualPI2)
 
-![Prague at 160ms RTT in DualPI2 L queue with Skype](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png)
-*Figure 6*
+With Prague in DualPI2, we see remarkable underutilization with Skype traffic in
+L. Some would argue that bursty traffic must not be placed in L. We leave it as
+an exercise for the reader to determine how feasible that is.
 
-#### Underutilization with Bursty Traffic in C
+We also see significant underutilization with Skype traffic in C, as the bursts
+that arrive in C impact L via the queue coupling mechanism.
 
-We also placed the bursty Skype traffic in the **C queue**, which leads to
-signals in L from the coupling mechanism. Steady-state throughput for the 160ms
-Prague flow was then around 12.5 Mbps (*Figure 7*), leaving around 3.5 Mbps
-unutilized, relative to the ~18.5 Mbps that Prague obtains
-without competition
-([pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap), [udp
-throughput](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_udp_tput.png)).
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Utilization % | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | ------------- | ----- |
+| Prague | DualPI2 | no    | 43.08 | 120 | steady | 18.27 | n/a | ([plot](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms.pcap.gz)) |
+| Prague | DualPI2 | yes, in L | 38.13 | 120 | steady | 2.29 | 14% | ([plot](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap.gz)) |
+| Prague | DualPI2 | yes, in C | 35.08 | 120 | steady | 12.64 | 77% | ([plot](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap.gz)) |
 
-![Prague at 160ms RTT in DualPI2 L queue with Skype in C queue](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png)
-*Figure 7*
+#### Utilization with Bursty Traffic (CUBIC in DualPI2)
+
+With CUBIC in DualPI2 and Skype traffic in C, we see that CUBIC utilizes the
+link in full. With Skype traffic in L, we see that the bursts that arrive in L
+impact C via the queue coupling mechanism, reducing CUBIC's utilization
+somewhat.
+
+CUBIC in DualPI2 sees two distinct phases of operation during steady-state, so
+it's divided here into *early* and *late*. We also see a pathological drop in
+throughput after slow-start exit visible in the
+[time series plot](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms_tput.png),
+due to an apparent overreaction from PI in combination with the bursty Skype
+traffic.
+
+TODO explain values over 100%
+
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Utilization % | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | ------------- | ----- |
+| CUBIC | DualPI2 | no    | 1.88 | 120 | steady | 16.22 | n/a | ([plot](results/skype/tput/iperf3_dualpi2_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_cubic_20mbps_160ms.pcap.gz)) |
+| CUBIC | DualPI2 | yes, in L | 3.42 | 120 | steady | 13.39 | 93% | ([plot](results/skype/tput/skype_dualpi2_l_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_cubic_20mbps_160ms.pcap.gz)) |
+| CUBIC | DualPI2 | yes, in C | 16.29 | 38.67 | steady *(early)* | 13.67 | 93% | ([plot](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms.pcap.gz)) |
+| CUBIC | DualPI2 | yes, in C | 38.67 | 120 | steady *(late)* | 14.77 | 102% | ([plot](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms.pcap.gz)) |
+| CUBIC | DualPI2 | yes, in C | 16.29 | 120 | steady | 14.53 | 101% | ([plot](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms.pcap.gz)) |
+
+#### Utilization with Bursty Traffic (CUBIC in Codel)
+
+With CUBIC in a single Codel queue, we see that Codel absorbs Skype's bursts
+without minimal spurious signalling, allowing CUBIC to fully utilize the
+available link capacity.
+
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Utilization % | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | ------------- | ----- |
+| CUBIC | Codel | no    | 1.88 | 120 | steady | 16.86 | n/a | ([plot](results/skype/tput/iperf3_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_codel_cubic_20mbps_160ms.pcap.gz)) |
+| CUBIC | Codel | yes   | 1.98 | 120 | steady | 15.08 | 100% | ([plot](results/skype/tput/skype_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_codel_cubic_20mbps_160ms.pcap.gz)) |
 
 ### Intra-Flow Latency Spikes
 
