@@ -361,8 +361,8 @@ We also see significant underutilization with Skype traffic in C, with a 5.63
 Mbps backoff in goodput in response to 1.79 Mbps of Skype traffic, when bursts
 that arrive in C impact L via the queue coupling mechanism.
 
-| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Goodput<sub>backoff</sub> | Links |
-| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | --------------------------- | ----- |
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput (Mbps) | Backoff (Mbps) | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | -------------- | -------------- | ----- |
 | Prague | DualPI2 | no    | 43.08 | 120 | steady | 18.27 | n/a | ([plot](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_prague_20mbps_160ms.pcap.gz)) |
 | Prague | DualPI2 | yes, in L | 38.13 | 120 | steady | 2.29 | 15.97 | ([plot](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_prague_20mbps_160ms.pcap.gz)) |
 | Prague | DualPI2 | yes, in C | 35.08 | 120 | steady | 12.64 | 5.63 | ([plot](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_prague_20mbps_160ms.pcap.gz)) |
@@ -380,8 +380,8 @@ throughput after slow-start exit visible in the
 due to an apparent overreaction from PI in combination with the bursty Skype
 traffic.
 
-| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Goodput<sub>backoff</sub> | Links |
-| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | ------------------------- | ----- |
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput (Mbps) | Backoff (Mbps) | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | -------------- | -------------- | ----- |
 | CUBIC | DualPI2 | no    | 1.88 | 120 | steady | 16.22 | n/a | ([plot](results/skype/tput/iperf3_dualpi2_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_dualpi2_cubic_20mbps_160ms.pcap.gz)) |
 | CUBIC | DualPI2 | yes, in L | 3.42 | 120 | steady | 13.39 | 2.83 | ([plot](results/skype/tput/skype_dualpi2_l_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_l_cubic_20mbps_160ms.pcap.gz)) |
 | CUBIC | DualPI2 | yes, in C | 16.29 | 38.67 | steady *(early)* | 13.67 | 2.54 | ([plot](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_dualpi2_c_cubic_20mbps_160ms.pcap.gz)) |
@@ -394,8 +394,8 @@ With CUBIC in a single Codel queue, Codel absorbs Skype's bursts with little to
 no spurious signalling, allowing CUBIC to fully utilize the available link
 capacity.
 
-| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Goodput<sub>backoff</sub> | Links |
-| --- | ----- | ----- | ----------------- | --------------- | ----- | ------- | ------------------------- | ----- |
+| CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput (Mbps) | Backoff (Mbps) | Links |
+| --- | ----- | ----- | ----------------- | --------------- | ----- | -------------- | -------------- | ----- |
 | CUBIC | Codel | no    | 1.88 | 120 | steady | 16.86 | n/a | ([plot](results/skype/tput/iperf3_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_codel_cubic_20mbps_160ms.pcap.gz)) |
 | CUBIC | Codel | yes   | 1.98 | 120 | steady | 15.08 | 1.78 | ([plot](results/skype/tput/skype_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_codel_cubic_20mbps_160ms.pcap.gz)) |
 
