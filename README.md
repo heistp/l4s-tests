@@ -339,7 +339,7 @@ traffic (1.79 Mbps bitrate) in DualPI2(L), DualPI2(C) and Codel queues, and
 measured the utilization of CUBIC and Prague, relative to their goodput without
 Skype competition. While the bursty Skype traffic has little impact on
 conventional AQMs and CCAs, we see significantly reduced utilization for L4S
-Prague flows in DualPI2, both when Skype is in the L queue, or the C queue.
+Prague flows in DualPI2, when Skype is in either the L queue, or the C queue.
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
@@ -356,7 +356,7 @@ With Prague in DualPI2, we see remarkable underutilization with Skype traffic in
 L. Some would argue that bursty traffic must not be placed in L. We leave it as
 an exercise for the reader to determine how feasible that is.
 
-We also see significant underutilization with Skype traffic in C, as the bursts
+We also see significant underutilization with Skype traffic in C, when the bursts
 that arrive in C impact L via the queue coupling mechanism.
 
 | CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput | Utilization % | Links |
