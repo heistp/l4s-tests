@@ -341,10 +341,10 @@ the bursty Skype traffic has little impact on conventional AQMs and CCAs, we see
 significantly reduced utilization for L4S Prague flows in DualPI2, when Skype is
 in either the L queue, or the C queue.
 
-*Figure 6* below is uses data from the subsections that follow. Goodput
-is measured using relative TCP sequence number differences over time. The
-theoretical maximum goodput with Skype is the goodput without competition, minus
-1.79 Mbps for Skype.
+*Figure 6* below uses data from the subsections that follow. Goodput is measured
+using relative TCP sequence number differences over time. The theoretical
+maximum goodput with Skype is the goodput without competition, minus 1.79 Mbps
+for Skype.
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
