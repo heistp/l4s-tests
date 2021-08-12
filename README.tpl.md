@@ -336,10 +336,10 @@ A few notes about the CDF plot in *Figure 5* below:
 
 Using a [real world test setup](#real-world-tests), we placed Skype video
 traffic (1.79 Mbps bitrate) in DualPI2(L), DualPI2(C) and Codel queues, and
-measured the goodput CUBIC and Prague, with and without Skype competition. While
-the bursty Skype traffic has little impact on conventional AQMs and CCAs, we see
-significantly reduced utilization for L4S Prague flows in DualPI2, when Skype is
-in either the L queue, or the C queue.
+measured the goodput for CUBIC and Prague, with and without Skype competition.
+While the bursty Skype traffic has little impact on conventional AQMs and CCAs,
+we see significantly reduced utilization for L4S Prague flows in DualPI2, when
+Skype is in either the L queue, or the C queue.
 
 *Figure 6* below uses data from the subsections that follow. Goodput is measured
 using relative TCP sequence number differences over time. The theoretical
