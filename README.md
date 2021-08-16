@@ -402,26 +402,51 @@ capacity.
 ### Intra-Flow Latency Spikes
 
 Intra-flow latency refers to the delay experienced within a single flow, and for
-TCP is typically measured using TCP RTT. Increases in intra-flow latency lead to
-delays experienced by the user, for example when HTTP/2 requests are
-multiplexed over a single TCP or QUIC flow that is building a queue.
+TCP is typically measured using TCP RTT. Increases in intra-flow latency lead
+to:
+* longer recovery times for TCP on loss or CE
+* delays experienced by the user, for example when HTTP/2 requests are
+  multiplexed over a single TCP or QUIC flow that is building a queue.
 
 Due to the redefinition of the CE codepoint
 [[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)], L4S
 transports underreact to CE signals sent by existing
-[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs, causing them to inflate
-queues where these AQMs are deployed. We usually discuss this in the context of
+[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs that are not aware of ECT(1)
+as the L4S identifier, causing them to inflate queues where these AQMs are
+deployed, even when FQ is present. We usually discuss this in the context of
 safety for non-L4S flows in the same RFC3168 queue, but the added delay that L4S
-flows can induce on themselves is also an important consideration.
+flows can induce on themselves in these existing queues is a performance issue.
 
-For a practical example, we'll look at the transient behavior of fq_codel. Rate
-reductions in particular can lead to intra-flow latency spikes. They can occur
-in fq_codel, both due to flow arrivals at the bottleneck, and rate changes in
-wireless links, which occur on timescales of tens to hundreds of milliseconds.
+For a practical example, we can look at the TCP RTT of two TCP Prague flows
+through an fq_codel bottleneck, where one sender is using WiFi (see [WiFi
+Setup](#real-world-tests-wifi)), and the other Ethernet. WiFi's naturally
+varying rates cause varying rates of arrival at the bottleneck, leading to TCP
+RTT spikes on rate reductions.
 
-First, let's look at what happens when a standard **CUBIC** flow experiences a
-routine 50% rate reduction in an fq_codel queue, from 50Mbps to 25Mbps (see
-*Figure 10*).
+First, the TCP RTT for Prague from the WiFi client:
+
+![TCP Prague in fq_codel, WiFi client](results/wifi/prague_fq_codel_wifi_rtt.png)
+*Figure 7a- TCP Prague in fq_codel, WiFi client*
+
+and for the corresponding Prague flow from the wired client (also affected as
+its available capacity is controlled by fq_codel):
+
+![TCP Prague in fq_codel, wired client](results/wifi/prague_fq_codel_wired_rtt.png)
+*Figure 7b- TCP Prague in fq_codel, wired client*
+
+This in comparison to how a CUBIC flow from the same WiFi client behaves:
+
+![TCP CUBIC in fq_codel, WiFi client](results/wifi/cubic_fq_codel_wifi_rtt.png)
+*Figure 8a- TCP CUBIC in fq_codel, WiFi client*
+
+and the corresponding CUBIC flow from a wired client:
+
+![TCP CUBIC in fq_codel, wired client](results/wifi/cubic_fq_codel_wired_rtt.png)
+*Figure 8b- TCP CUBIC in fq_codel, wired client*
+
+For a more controlled example, let's look at what happens when a standard
+**CUBIC** flow experiences a 50% rate reduction in an fq_codel queue, from
+50Mbps to 25Mbps (see *Figure 10*).
 
 ![Rate Reduction for CUBIC with fq_codel, 50 -> 25Mbit at 80ms](http://sce.dnsmgr.net/results/l4s-2020-11-11T120000-final/l4s-s2-codel-rate-step/l4s-s2-codel-rate-step-ns-clean-cubic-fq_codel-50Mbit-25mbit-80ms_tcp_delivery_with_rtt.svg)  
 *Figure 10*
@@ -1268,11 +1293,22 @@ The **fl** script performs the following functions:
 - acts as a harness for flent, setting up and tearing down the test config
 - generates this README.md from a template
 
-#### Real World Tests
+#### Real World Tests- Wired
 
-The diagram below shows the setup used for the L4S "real world" tests.
+The diagram below shows the setup used for the L4S "real world" wired tests.
 [PCEngines APUs](https://pcengines.ch/apu2e4.htm) were used with L4S kernel
 [L4STeam/linux@3cc3851880a1b8fac49d56ed1441deef2844d405](https://github.com/L4STeam/linux/tree/3cc3851880a1b8fac49d56ed1441deef2844d405)
 (from June 28, 2021).
 
-![Diagram of Real World Test Setup](images/rwt_setup.jpg)
+![Diagram of Real World Wired Test Setup](images/rwt_setup.jpg)
+
+#### Real World Tests- WiFi
+
+The diagram below shows the setup used for the L4S "real world" WiFi tests.  The
+same L4S kernels were used on the APUs as in the wired tests, and an L4S kernel
+was also used on the WiFi client (laptop icon). To simulate a realistic
+environment, the laptop was about 8 meters from the access point and through one
+wall, using a 2.4 GHz channel with naturally varying rates from MCS3 (26 Mbps)
+to MCS12 (78 Mbps).
+
+![Diagram of Real World WiFi Test Setup](images/rwt_setup_wifi.jpg)
