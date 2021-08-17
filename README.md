@@ -342,7 +342,8 @@ two-flow competition between two TCP Prague flows, one wired and one WiFi, at
 20Mbps with 20ms RTT. The wired flow starts at T=0 and runs the length of the
 test. The WiFi flow starts at T=30 and ends at T=90. In *Figure 6a* below, we
 can compare the difference in TCP RTT when the WiFi flow is active, and observe
-that the induced delay exceeds the sub 1ms ultra-low latency goal.
+that the induced delay in the wired flow exceeds the sub 1ms ultra-low latency
+goal.
 
 ![Between-Flow Induced Delay from WiFi on Wired](results/wifi/prague_dualpi2_wired_rtt.png)
 *Figure 6a- TCP Prague TCP RTT for wired flow, with competing WiFi flow*
