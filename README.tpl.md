@@ -16,7 +16,7 @@ Jonathan Morton
    4. [RTT Unfairness](#rtt-unfairness)
    5. [Between-Flow Induced Delay](#between-flow-induced-delay)
    6. [Underutilization with Bursty Traffic](#underutilization-with-bursty-traffic)
-   7. [Intra-Flow Latency Spikes](#intra-flow-latency-spikes)
+   7. [Intra-Flow Latency Spikes from Underreaction to RFC3168 CE](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
    8. [Burst Intolerance](#burst-intolerance)
    9. [Dropped Packets for Tunnels with Replay Protection Enabled](#dropped-packets-for-tunnels-with-replay-protection-enabled)
 4. [Risk Assessment](#risk-assessment)
@@ -76,8 +76,8 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 6. Bursty traffic in both the L **and C** queues can cause
    [underutilization](#bursty-traffic-underutilization) for flows in L.
 7. L4S transports experience
-   [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC3168
-   bottlenecks, particularly with the widely deployed fq_codel.
+   [intra-flow latency spikes](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
+   at RFC3168 bottlenecks, particularly with the widely deployed fq_codel.
 8. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
@@ -427,47 +427,50 @@ capacity.
 | CUBIC | Codel | no    | 1.88 | 120 | steady | 16.86 | n/a | ([plot](results/skype/tput/iperf3_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_codel_cubic_20mbps_160ms.pcap.gz)) |
 | CUBIC | Codel | yes   | 1.98 | 120 | steady | 15.08 | 1.78 | ([plot](results/skype/tput/skype_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_codel_cubic_20mbps_160ms.pcap.gz)) |
 
-### Intra-Flow Latency Spikes
+### Intra-Flow Latency Spikes from Underreaction to RFC3168 CE
 
-Intra-flow latency refers to the delay experienced within a single flow, and for
-TCP is typically measured using TCP RTT. Increases in intra-flow latency lead
-to:
-* longer recovery times for TCP on loss or CE
-* delays experienced by the user, for example when HTTP/2 requests are
-  multiplexed over a single TCP or QUIC flow that is building a queue.
+Intra-flow latency refers to the delay experienced by a single flow, and for TCP
+is typically measured using TCP RTT. Increases in intra-flow latency lead to:
+* longer recovery times for TCP on loss or CE, which may be experienced by the
+  user as response time delays
+* delays for requests that are multiplexed over a single flow
 
-Due to the redefinition of the CE codepoint
-[[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)], L4S
-transports underreact to CE signals sent by existing
-[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs that are not aware of ECT(1)
-as the L4S identifier, causing them to inflate queues where these AQMs are
-deployed, even when FQ is present. We usually discuss this in the context of
-safety for non-L4S flows in the same RFC3168 queue, but the added delay that L4S
-flows can induce on themselves in these existing queues is a performance issue.
+Because
+[[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)]
+redefines the CE codepoint in a way that is incompatible with
+[RFC3168](https://tools.ietf.org/html/rfc3168), L4S transports underreact to the
+CE signals sent by existing RFC3168 AQMs, which still take ECT(1) to mean RFC3168
+capability and are not aware of its use as an L4S identifier. This causes them
+to inflate queues where these AQMs are deployed, even when FQ is present. We
+usually discuss this in the context of safety for non-L4S flows in the same
+RFC3168 queue, but the added delay that L4S flows can induce on themselves in
+RFC3168 queues is a performance issue.
 
 For a practical example, we can look at the TCP RTT of two TCP Prague flows
-through an fq_codel bottleneck, where one sender is using WiFi (see [WiFi
-Setup](#real-world-tests-wifi)), and the other Ethernet. WiFi's naturally
+through an fq_codel bottleneck, where one sender is using WiFi (see
+[WiFi Setup](#real-world-tests-wifi)), and the other Ethernet. WiFi's naturally
 varying rates cause varying rates of arrival at the bottleneck, leading to TCP
 RTT spikes on rate reductions.
 
-First, the TCP RTT for Prague from the WiFi client:
+First, the TCP RTT for Prague from the WiFi client through fq_codel:
 
 ![TCP Prague in fq_codel, WiFi client](results/wifi/prague_fq_codel_wifi_rtt.png)
 *Figure 8a- TCP Prague in fq_codel, WiFi client*
 
-and for the corresponding Prague flow from the wired client (also affected as
-its available capacity is controlled by fq_codel):
+and for the corresponding Prague flow from the wired client (also affected from
+T-30 to T=90 while the WiFi flow is active, as its available capacity in
+fq_codel changes):
 
 ![TCP Prague in fq_codel, wired client](results/wifi/prague_fq_codel_wired_rtt.png)
 *Figure 8b- TCP Prague in fq_codel, wired client*
 
-This in comparison to how a CUBIC flow from the same WiFi client behaves:
+This in comparison to how a CUBIC flow from the same WiFi client behaves through
+fq_codel:
 
 ![TCP CUBIC in fq_codel, WiFi client](results/wifi/cubic_fq_codel_wifi_rtt.png)
 *Figure 9a- TCP CUBIC in fq_codel, WiFi client*
 
-and the corresponding CUBIC flow from a wired client:
+and the corresponding CUBIC flow from a wired client through fq_codel:
 
 ![TCP CUBIC in fq_codel, wired client](results/wifi/cubic_fq_codel_wired_rtt.png)
 *Figure 9b- TCP CUBIC in fq_codel, wired client*
