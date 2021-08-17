@@ -69,9 +69,10 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
    existing CUBIC flows.
 4. TCP Prague and DualPI2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the presently used CUBIC and pfifo.
-5. Bursty traffic in the L queue from applications such as videoconferencing
-   can cause [between-flow induced delay](#between-flow-induced-delay)
-   that far exceeds the sub 1ms ultra-low latency goal.
+5. Bursty traffic in the L queue, whether from applications (e.g.
+   videoconferencing) or the network layer (e.g. WiFi) can cause
+   [between-flow induced delay](#between-flow-induced-delay) that far exceeds
+   the sub 1ms ultra-low latency goal.
 6. Bursty traffic in both the L **and C** queues can cause
    [underutilization](#bursty-traffic-underutilization) for flows in L.
 7. L4S transports experience
@@ -308,6 +309,8 @@ consensus and running code", we strongly suggest that this deficiency be remedie
 Between-flow induced delay refers to the delay induced by one flow on another
 when they're in the same FIFO queue.
 
+#### Between-Flow Induced Delay from Skype
+
 Using a [real world test setup](#real-world-tests), we placed Skype video
 traffic (~2.5 Mbps bitrate) in the L queue on both egress and ingress dualpi2
 instances at three different bottleneck bandwidths, 5 Mbps, 10 Mbps and 20 Mbps.
@@ -332,6 +335,30 @@ A few notes about the CDF plot in *Figure 5* below:
 ![Bi-Directional Skype Video: Between-Flow Induced Latency CDF](results/skype/bfid/skype_bfid_cdf.svg)
 *Figure 5*
 
+#### Between-Flow Induced Delay from WiFi
+
+Using a [real world test setup for WiFi](#real-world-tests--wifi), we ran
+two-flow competition between two TCP Prague flows, one wired and one WiFi, at
+20Mbps with 20ms RTT. The wired flow starts at T=0 and runs the length of the
+test. The WiFi flow starts at T=30 and ends at T=90. In *Figure 6a* below, we
+can compare the difference in TCP RTT when the WiFi flow is active, and observe
+that the induced delay exceeds the sub 1ms ultra-low latency goal.
+
+![Between-Flow Induced Delay from WiFi on Wired](results/wifi/prague_dualpi2_wired_rtt.png)
+*Figure 6a- TCP Prague TCP RTT for wired flow, with competing WiFi flow*
+
+In *Figure 6b* below, we can also see that the WiFi flow itself shows delays
+that far exceed those that come from queueing. Note that T=0 to T=60 here
+corresponds to T=30 to T=90 in *Figure 6a*.
+
+![TCP RTT for WiFi flow](results/wifi/prague_dualpi2_wifi_rtt.png)
+*Figure 6b- TCP Prague TCP RTT for WiFi flow*
+
+It may be argued that the above means "we must fix WiFi". There may be room for
+improvement with WiFi, however this is the Internet as it is today, and there is
+a discussion to be had around whether reliably low queueing delays will
+ultimately require flow separation.
+
 ### Underutilization with Bursty Traffic
 
 Using a [real world test setup](#real-world-tests), we placed Skype video
@@ -341,14 +368,14 @@ While the bursty Skype traffic has little impact on conventional AQMs and CCAs,
 we see significantly reduced utilization for L4S Prague flows in DualPI2, when
 Skype is in either the L queue, or the C queue.
 
-*Figure 6* below uses data from the subsections that follow. Goodput is measured
+*Figure 7* below uses data from the subsections that follow. Goodput is measured
 using relative TCP sequence number differences over time. The theoretical
 maximum goodput with Skype is the CCA's goodput without competition, minus 1.79
 Mbps for Skype.
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
-*Figure 6*
+*Figure 7*
 
 #### Underutilization with Bursty Traffic (Prague in DualPI2)
 
@@ -426,23 +453,23 @@ RTT spikes on rate reductions.
 First, the TCP RTT for Prague from the WiFi client:
 
 ![TCP Prague in fq_codel, WiFi client](results/wifi/prague_fq_codel_wifi_rtt.png)
-*Figure 7a- TCP Prague in fq_codel, WiFi client*
+*Figure 8a- TCP Prague in fq_codel, WiFi client*
 
 and for the corresponding Prague flow from the wired client (also affected as
 its available capacity is controlled by fq_codel):
 
 ![TCP Prague in fq_codel, wired client](results/wifi/prague_fq_codel_wired_rtt.png)
-*Figure 7b- TCP Prague in fq_codel, wired client*
+*Figure 8b- TCP Prague in fq_codel, wired client*
 
 This in comparison to how a CUBIC flow from the same WiFi client behaves:
 
 ![TCP CUBIC in fq_codel, WiFi client](results/wifi/cubic_fq_codel_wifi_rtt.png)
-*Figure 8a- TCP CUBIC in fq_codel, WiFi client*
+*Figure 9a- TCP CUBIC in fq_codel, WiFi client*
 
 and the corresponding CUBIC flow from a wired client:
 
 ![TCP CUBIC in fq_codel, wired client](results/wifi/cubic_fq_codel_wired_rtt.png)
-*Figure 8b- TCP CUBIC in fq_codel, wired client*
+*Figure 9b- TCP CUBIC in fq_codel, wired client*
 
 For a more controlled example, let's look at what happens when a standard
 **CUBIC** flow experiences a 50% rate reduction in an fq_codel queue, from
