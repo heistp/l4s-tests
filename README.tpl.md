@@ -16,7 +16,7 @@ Jonathan Morton
    4. [RTT Unfairness](#rtt-unfairness)
    5. [Between-Flow Induced Delay](#between-flow-induced-delay)
    6. [Underutilization with Bursty Traffic](#underutilization-with-bursty-traffic)
-   7. [Intra-Flow Latency Spikes](#intra-flow-latency-spikes)
+   7. [Intra-Flow Latency Spikes from Underreaction to RFC3168 CE](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
    8. [Burst Intolerance](#burst-intolerance)
    9. [Dropped Packets for Tunnels with Replay Protection Enabled](#dropped-packets-for-tunnels-with-replay-protection-enabled)
 4. [Risk Assessment](#risk-assessment)
@@ -69,14 +69,15 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
    existing CUBIC flows.
 4. TCP Prague and DualPI2 exhibit a greater level of
    [RTT unfairness](#rtt-unfairness) than the presently used CUBIC and pfifo.
-5. Bursty traffic in the L queue from applications such as videoconferencing
-   can cause [between-flow induced delay](#between-flow-induced-delay)
-   that far exceeds the sub 1ms ultra-low latency goal.
+5. Bursty traffic in the L queue, whether from applications (e.g.
+   videoconferencing) or the network layer (e.g. WiFi) can cause
+   [between-flow induced delay](#between-flow-induced-delay) that far exceeds
+   the sub 1ms ultra-low latency goal.
 6. Bursty traffic in both the L **and C** queues can cause
    [underutilization](#bursty-traffic-underutilization) for flows in L.
 7. L4S transports experience
-   [intra-flow latency spikes](#intra-flow-latency-spikes) at RFC3168
-   bottlenecks, particularly with the widely deployed fq_codel.
+   [intra-flow latency spikes](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
+   at RFC3168 bottlenecks, particularly with the widely deployed fq_codel.
 8. The marking scheme in the DualPI2 qdisc is
    [burst intolerant](#burst-intolerance), causing under-utilization for
    traffic with bursty arrivals.
@@ -308,6 +309,8 @@ consensus and running code", we strongly suggest that this deficiency be remedie
 Between-flow induced delay refers to the delay induced by one flow on another
 when they're in the same FIFO queue.
 
+#### Between-Flow Induced Delay from Skype
+
 Using a [real world test setup](#real-world-tests), we placed Skype video
 traffic (~2.5 Mbps bitrate) in the L queue on both egress and ingress dualpi2
 instances at three different bottleneck bandwidths, 5 Mbps, 10 Mbps and 20 Mbps.
@@ -332,6 +335,31 @@ A few notes about the CDF plot in *Figure 5* below:
 ![Bi-Directional Skype Video: Between-Flow Induced Latency CDF](results/skype/bfid/skype_bfid_cdf.svg)
 *Figure 5*
 
+#### Between-Flow Induced Delay from WiFi
+
+Using a [real world test setup for WiFi](#real-world-tests--wifi), we ran
+two-flow competition between two TCP Prague flows, one wired and one WiFi, at
+20Mbps with 20ms RTT. The wired flow starts at T=0 and runs the length of the
+test. The WiFi flow starts at T=30 and ends at T=90. In *Figure 6a* below, we
+can compare the difference in TCP RTT when the WiFi flow is active, and observe
+that the induced delay in the wired flow exceeds the sub 1ms ultra-low latency
+goal.
+
+![Between-Flow Induced Delay from WiFi on Wired](results/wifi/prague_dualpi2_wired_rtt.png)
+*Figure 6a- TCP Prague TCP RTT for wired flow, with competing WiFi flow*
+
+Just to put things in perspective, in *Figure 6b* below, we can also see that
+the WiFi flow itself shows delays that far exceed those that come from queueing.
+Note that T=0 to T=60 here corresponds to T=30 to T=90 in *Figure 6a*.
+
+![TCP RTT for WiFi flow](results/wifi/prague_dualpi2_wifi_rtt.png)
+*Figure 6b- TCP Prague TCP RTT for WiFi flow*
+
+It may be argued that the above means "we must fix WiFi". There may be room for
+improvement with WiFi, however this is the Internet as it is today, and there is
+a discussion to be had around whether reliably low queueing delays will
+ultimately require flow separation.
+
 ### Underutilization with Bursty Traffic
 
 Using a [real world test setup](#real-world-tests), we placed Skype video
@@ -341,14 +369,14 @@ While the bursty Skype traffic has little impact on conventional AQMs and CCAs,
 we see significantly reduced utilization for L4S Prague flows in DualPI2, when
 Skype is in either the L queue, or the C queue.
 
-*Figure 6* below uses data from the subsections that follow. Goodput is measured
+*Figure 7* below uses data from the subsections that follow. Goodput is measured
 using relative TCP sequence number differences over time. The theoretical
 maximum goodput with Skype is the CCA's goodput without competition, minus 1.79
 Mbps for Skype.
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
-*Figure 6*
+*Figure 7*
 
 #### Underutilization with Bursty Traffic (Prague in DualPI2)
 
@@ -399,29 +427,57 @@ capacity.
 | CUBIC | Codel | no    | 1.88 | 120 | steady | 16.86 | n/a | ([plot](results/skype/tput/iperf3_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/iperf3_codel_cubic_20mbps_160ms.pcap.gz)) |
 | CUBIC | Codel | yes   | 1.98 | 120 | steady | 15.08 | 1.78 | ([plot](results/skype/tput/skype_codel_cubic_20mbps_160ms_tput.png), [pcap](results/skype/tput/skype_codel_cubic_20mbps_160ms.pcap.gz)) |
 
-### Intra-Flow Latency Spikes
+### Intra-Flow Latency Spikes from Underreaction to RFC3168 CE
 
-Intra-flow latency refers to the delay experienced within a single flow, and for
-TCP is typically measured using TCP RTT. Increases in intra-flow latency lead to
-delays experienced by the user, for example when HTTP/2 requests are
-multiplexed over a single TCP or QUIC flow that is building a queue.
+Intra-flow latency refers to the delay experienced by a single flow. Increases
+in intra-flow latency lead to:
+* longer recovery times on loss or CE, which may be experienced by the user as
+  response time delays
+* delays for requests that are multiplexed over a single flow
 
-Due to the redefinition of the CE codepoint
-[[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)], L4S
-transports underreact to CE signals sent by existing
-[RFC3168](https://tools.ietf.org/html/rfc3168) AQMs, causing them to inflate
-queues where these AQMs are deployed. We usually discuss this in the context of
-safety for non-L4S flows in the same RFC3168 queue, but the added delay that L4S
-flows can induce on themselves is also an important consideration.
+Because
+[[l4s-id](https://datatracker.ietf.org/doc/draft-ietf-tsvwg-ecn-l4s-id/)]
+redefines the CE codepoint in a way that is incompatible with
+[RFC3168](https://tools.ietf.org/html/rfc3168), L4S transports underreact to the
+CE signals sent by existing RFC3168 AQMs, which still take ECT(1) to mean RFC3168
+capability and are not aware of its use as an L4S identifier. This causes them
+to inflate queues where these AQMs are deployed, even when FQ is present. We
+usually discuss this in the context of safety for non-L4S flows in the same
+RFC3168 queue, but the added delay that L4S flows can induce on themselves in
+RFC3168 queues is a performance issue.
 
-For a practical example, we'll look at the transient behavior of fq_codel. Rate
-reductions in particular can lead to intra-flow latency spikes. They can occur
-in fq_codel, both due to flow arrivals at the bottleneck, and rate changes in
-wireless links, which occur on timescales of tens to hundreds of milliseconds.
+For a practical example, we can look at the TCP RTT of two TCP Prague flows
+through an fq_codel bottleneck, where one sender is using WiFi (see
+[WiFi Setup](#real-world-tests-wifi)), and the other Ethernet. WiFi's naturally
+varying rates cause varying rates of arrival at the bottleneck, leading to TCP
+RTT spikes on rate reductions.
 
-First, let's look at what happens when a standard **CUBIC** flow experiences a
-routine 50% rate reduction in an fq_codel queue, from 50Mbps to 25Mbps (see
-*Figure 10*).
+First, the TCP RTT for Prague from the WiFi client through fq_codel:
+
+![TCP Prague in fq_codel, WiFi client](results/wifi/prague_fq_codel_wifi_rtt.png)
+*Figure 8a- TCP Prague in fq_codel, WiFi client*
+
+and for the corresponding Prague flow from the wired client (also affected from
+T-30 to T=90 while the WiFi flow is active, as its available capacity in
+fq_codel changes):
+
+![TCP Prague in fq_codel, wired client](results/wifi/prague_fq_codel_wired_rtt.png)
+*Figure 8b- TCP Prague in fq_codel, wired client*
+
+This in comparison to how a CUBIC flow from the same WiFi client behaves through
+fq_codel:
+
+![TCP CUBIC in fq_codel, WiFi client](results/wifi/cubic_fq_codel_wifi_rtt.png)
+*Figure 9a- TCP CUBIC in fq_codel, WiFi client*
+
+and the corresponding CUBIC flow from a wired client through fq_codel:
+
+![TCP CUBIC in fq_codel, wired client](results/wifi/cubic_fq_codel_wired_rtt.png)
+*Figure 9b- TCP CUBIC in fq_codel, wired client*
+
+For a more controlled example, let's look at what happens when a standard
+**CUBIC** flow experiences a 50% rate reduction in an fq_codel queue, from
+50Mbps to 25Mbps (see *Figure 10*).
 
 $(plot_inline "Rate Reduction for CUBIC with fq_codel, 50 -> 25Mbit at 80ms" "l4s-s2-codel-rate-step" "ns-clean-cubic-fq_codel-50Mbit-25mbit-80ms_tcp_delivery_with_rtt.svg")  
 *Figure 10*
@@ -745,11 +801,22 @@ The **fl** script performs the following functions:
 - acts as a harness for flent, setting up and tearing down the test config
 - generates this README.md from a template
 
-#### Real World Tests
+#### Real World Tests- Wired
 
-The diagram below shows the setup used for the L4S "real world" tests.
+The diagram below shows the setup used for the L4S "real world" wired tests.
 [PCEngines APUs](https://pcengines.ch/apu2e4.htm) were used with L4S kernel
 [L4STeam/linux@3cc3851880a1b8fac49d56ed1441deef2844d405](https://github.com/L4STeam/linux/tree/3cc3851880a1b8fac49d56ed1441deef2844d405)
 (from June 28, 2021).
 
-![Diagram of Real World Test Setup](images/rwt_setup.jpg)
+![Diagram of Real World Wired Test Setup](images/rwt_setup.jpg)
+
+#### Real World Tests- WiFi
+
+The diagram below shows the setup used for the L4S "real world" WiFi tests.  The
+same L4S kernels were used on the APUs as in the wired tests, and an L4S kernel
+was also used on the WiFi client (laptop icon). To simulate a realistic
+environment, the laptop was about 8 meters from the access point and through one
+wall, using a 2.4 GHz channel with naturally varying rates from MCS3 (26 Mbps)
+to MCS12 (78 Mbps).
+
+![Diagram of Real World WiFi Test Setup](images/rwt_setup_wifi.jpg)
