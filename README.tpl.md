@@ -348,9 +348,9 @@ goal.
 ![Between-Flow Induced Delay from WiFi on Wired](results/wifi/prague_dualpi2_wired_rtt.png)
 *Figure 6a- TCP Prague TCP RTT for wired flow, with competing WiFi flow*
 
-In *Figure 6b* below, we can also see that the WiFi flow itself shows delays
-that far exceed those that come from queueing. Note that T=0 to T=60 here
-corresponds to T=30 to T=90 in *Figure 6a*.
+Just to put things in perspective, in *Figure 6b* below, we can also see that
+the WiFi flow itself shows delays that far exceed those that come from queueing.
+Note that T=0 to T=60 here corresponds to T=30 to T=90 in *Figure 6a*.
 
 ![TCP RTT for WiFi flow](results/wifi/prague_dualpi2_wifi_rtt.png)
 *Figure 6b- TCP Prague TCP RTT for WiFi flow*
@@ -429,10 +429,10 @@ capacity.
 
 ### Intra-Flow Latency Spikes from Underreaction to RFC3168 CE
 
-Intra-flow latency refers to the delay experienced by a single flow, and for TCP
-is typically measured using TCP RTT. Increases in intra-flow latency lead to:
-* longer recovery times for TCP on loss or CE, which may be experienced by the
-  user as response time delays
+Intra-flow latency refers to the delay experienced by a single flow. Increases
+in intra-flow latency lead to:
+* longer recovery times on loss or CE, which may be experienced by the user as
+  response time delays
 * delays for requests that are multiplexed over a single flow
 
 Because
