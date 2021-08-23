@@ -17,7 +17,7 @@ Jonathan Morton
    5. [Between-Flow Induced Delay](#between-flow-induced-delay)
    6. [Underutilization with Bursty Traffic](#underutilization-with-bursty-traffic)
    7. [Intra-Flow Latency Spikes from Underreaction to RFC3168 CE](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
-   8. [Burst Intolerance](#burst-intolerance)
+   8. [Underutilization with Bursty Links](#underutilization-with-bursty-links)
    9. [Dropped Packets for Tunnels with Replay Protection Enabled](#dropped-packets-for-tunnels-with-replay-protection-enabled)
 4. [Risk Assessment](#risk-assessment)
    1. [Severity](#severity)
@@ -78,9 +78,9 @@ familiar with the topic can proceed to the [Key Findings](#key-findings).
 7. L4S transports experience
    [intra-flow latency spikes](#intra-flow-latency-spikes-from-underreaction-to-rfc3168-ce)
    at RFC3168 bottlenecks, particularly with the widely deployed fq_codel.
-8. The marking scheme in the DualPI2 qdisc is
-   [burst intolerant](#burst-intolerance), causing under-utilization for
-   traffic with bursty arrivals.
+8. The marking scheme in the DualPI2 qdisc is burst intolerant, causing
+   [under-utilization with bursty links](#underutilization-with-bursty-links)
+   (i.e. wireless).
 9. [Tunnels may drop packets that traverse the C queue](#dropped-packets-for-tunnels-with-replay-protection-enabled)
    when [anti-replay](https://en.wikipedia.org/wiki/Anti-replay) is enabled,
    leading to harm to classic traffic and enabling a DoS attack.
@@ -446,6 +446,8 @@ usually discuss this in the context of safety for non-L4S flows in the same
 RFC3168 queue, but the added delay that L4S flows can induce on themselves in
 RFC3168 queues is a performance issue.
 
+#### Intra-Flow Latency Spikes (Real-World Tests)
+
 For a practical example, we can look at the TCP RTT of two TCP Prague flows
 through an fq_codel bottleneck, where one sender is using WiFi (see
 [WiFi Setup](#real-world-tests-wifi)), and the other Ethernet. WiFi's naturally
@@ -474,6 +476,8 @@ and the corresponding CUBIC flow from a wired client through fq_codel:
 
 ![TCP CUBIC in fq_codel, wired client](results/wifi/cubic_fq_codel_wired_rtt.png)
 *Figure 9b- TCP CUBIC in fq_codel, wired client*
+
+#### Intra-Flow Latency Spikes (Lab Tests)
 
 For a more controlled example, let's look at what happens when a standard
 **CUBIC** flow experiences a 50% rate reduction in an fq_codel queue, from
@@ -526,35 +530,116 @@ See the [Scenario 3](#scenario-3-codel-variable-rate) results, in
 particular for TCP Prague through fq_codel, to look at what happens when
 rates vary several times over the course of a flow.
 
-### Burst Intolerance
+### Underutilization with Bursty Links
 
 The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
-1 ms threshold, which while effective for keeping queues shorter, causes
+1 ms threshold, which while usually effective for keeping queues shorter, causes
 excessive marking for bursty packet arrivals. This results in link
-under-utilization for the typically bursty Internet traffic. Burstiness can
-come from the link layer, for example with WiFi, where bursts of up to about
-4ms are sent, or just from cross-flow traffic through shared bottlenecks.
+under-utilization for bursty Internet traffic. Burstiness can come from the link
+layer, for example with WiFi, where bursts of up to about 4ms are sent, or just
+from cross-flow traffic through shared bottlenecks.
 
 Note that burstiness is distinguished from jitter in general, which is
 associated with a variance in inter-packet gaps, but does not necessarily
-consist of well-defined bursts of packets at line rate. In any case, both
-well-paced and bursty flows can be expected on the Internet.
+consist of well-defined bursts of packets at line rate. In any case, bursty
+links can be expected on the Internet.
+
+#### Underutilization with Bursty Links (Real-World Tests)
+
+Using a [real world test setup](#real-world-tests), we ran 5 minute single flow
+tests from the Czech Republic to Portland, varying the CCA (congestion control
+algorithm and Qdisc (queueing discipline). The access link in Czech uses
+Ubiquiti's [airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology, while
+in Portland, 1Gbit fiber is used. The only known AQM on the path was from the
+Qdisc on ingress in Portland, configured for each test.
+
+The two tables below show the steady-state goodputs obtained for each
+combination of CCA and Qdisc, at the tested rates of 20 Mbps and 25 Mbps. It can
+be seen that the CCAs using L4S signalling (in the L queue) significantly
+underutilize the link compared to classic CCAs using conventional RFC3168
+signalling. It can also be seen that BBR2 sees a significant reduction in
+goodput when responding to L4S signaling in DualPI2, vs when it relies on
+conventional signals from fq_codel.
+
+**20 Mbps Bottleneck**
+
+| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retransmits | Links |
+| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----------- | ----- |
+| Prague | DualPI2 | L |  **11.00** | 145.55 | 295 | 3 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | **13.49** | 2.94 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | 18.47 | 2.75 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd.pcap.gz) |
+| CUBIC | DualPI2 | C | 16.24 | 22.94 | 295 | 5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | 15.78 | 2.54 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd.pcap.gz) |
+
+**25 Mbps Bottleneck**
+
+| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retransmits | Links |
+| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----------- | ----- |
+| Prague | DualPI2 | L |  **12.58** | 52.22 | 169.03 | 2 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | **15.18** | 14.13 | 295 | 8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | 23.10 | 2.74 | 295 | 13 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd.pcap.gz) |
+| CUBIC | DualPI2 | C | 19.75 | 13.44 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | 18.64 | 13.85 | 295 | 4 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd.pcap.gz) |
+
+The table columns are as follows:
+* CCA: congestion control algorithm
+* Qdisc: queueing discipline
+* Queue: DualPI2 queue (where applicable)
+* Goodput<sub>SS</sub>: goodput at steady-state
+* T<sub>start</sub>: start time of steady-state
+* T<sub>end</sub>: end time of steady-state
+* Retransmits: number of TCP retransmits during test, as determined by
+  Wireshark's \`tcp.analysis.retransmission\`
+* Links: links to throughput plot, TCP RTT plot, and pcap
+
+**Analysis:**
+
+In *Figure 14* below, we can see TCP Prague's throughput through the bursty link
+and a 20 Mbps DualPI2 bottleneck. The reductions in throughput around T=80 to
+T=130 are responses to dropped packets, and are excluded from the steady-state
+throughput calculations. There is some amount of "random" loss on the path, so
+we didn't want that to be the determining factor in the results, but instead
+wanted to focus primarily on the congestion control response. Even with that, it
+is seen that TCP Prague significantly underutilizes the link.
+
+![Throughput for TCP Prague through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png)
+*Figure 14- Throughput for TCP Prague through bursty link, 20 Mbps DualPI2 bottleneck*
+
+This compared to *Figure 15* below, the throughput from a conventional CUBIC
+flow through the DualPI2 L queue:
+
+![Throughput for TCP CUBIC through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_tput.png)
+*Figure 15- Throughput for TCP CUBIC through bursty link, 20 Mbps DualPI2 bottleneck*
+
+The difference is due to the tight AQM marking and short L queue, relative to
+the bursty packet arrivals. In the TCP sequence diagrams in *Figure 16* and
+*Figure 17*, we can compare the difference in burstiness between the paced
+packets from TCP Prague as they are sent, and see how much of the even pacing
+at the sender has been lost by the time the packets reach the receiver.
+
+![Time sequence diagram for TCP Prague at the sender](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_snd_tseq.png)
+*Figure 17- Time sequence diagram for TCP Prague at the sender*
+
+![Time sequence diagram for TCP Prague at the receiver](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_rcv_tseq.png)
+*Figure 17- Time sequence diagram for TCP Prague at the receiver*
+
+#### Underutilization with Bursty Links (Lab Tests)
 
 [Scenario 2](#scenario-2-codel-rate-step) and
 [Scenario 3](#scenario-3-codel-variable-rate) both include runs with netem
-simulated bursts of approximately 4ms in duration. In *Figure 14*, we can
+simulated bursts of approximately 4ms in duration. In *Figure 20*, we can
 see how **CUBIC through fq_codel** handles such bursts.
 
 $(plot_inline "Rate Reduction for CUBIC with fq_codel, 50Mbps -> 25Mbps with Bursty Traffic" "l4s-s2-codel-rate-step" "ns-bursty-cubic-fq_codel-50Mbit-25mbit-20ms_tcp_delivery_with_rtt.svg")  
-*Figure 14*
+*Figure 20*
 
-Next, in *Figure 15* we see how **TCP Prague through DualPI2** handles the same
+Next, in *Figure 21* we see how **TCP Prague through DualPI2** handles the same
 bursts:
 
 $(plot_inline "Rate Reduction for Prague with dualpi2, 50Mbps -> 25Mbps with Bursty Traffic" "l4s-s2-codel-rate-step" "ns-bursty-prague-dualpi2-50Mbit-25mbit-20ms_tcp_delivery_with_rtt.svg")  
-*Figure 15*
+*Figure 21*
 
-In *Figure 14* and *Figure 15* we can see that the lower TCP RTT of TCP Prague
+In *Figure 20* and *Figure 21* we can see that the lower TCP RTT of TCP Prague
 comes with a tradeoff of about a 50% reduction in link utilization. While this
 may be appropriate for low-latency traffic, capacity seeking bulk downloads may
 prefer increased utilization at the expense of some intra-flow delay. We raise
@@ -599,12 +684,12 @@ until the window is high enough such that drops do not occur.
 
 *Table 1*
 
-As an example, *Figure 16* below shows the plot for a 20Mbps bottleneck with a
+As an example, *Figure 22* below shows the plot for a 20Mbps bottleneck with a
 32 packet window. We can see that throughput for CUBIC is much lower than what
 would be expected under these conditions, due to packets drops by anti-replay.
 
 $(plot_inline "L4S: ipsec tunnel (32 packet replay window)" "l4s-s9-tunnel-reordering" "ns-ipsec-replay-win-32-dualpi2-20Mbit-20ms_tcp_delivery_with_rtt.svg")  
-*Figure 16*
+*Figure 22*
 
 IPsec tunnels commonly use a 32 or 64 packet replay window as the default (32
 for
