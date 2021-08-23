@@ -533,11 +533,11 @@ rates vary several times over the course of a flow.
 ### Underutilization with Bursty Links
 
 The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
-1 ms threshold, which while intended to keep queues shorter, causes excessive
-marking for bursty packet arrivals. This can results in link under-utilization,
-for example when packets have passed through a wireless link, where they are
-grouped into aggregates then sent at line rate from the receiver. With WiFi,
-bursts of up to 4ms may occur.
+1 ms threshold. While intended to keep queues shorter, it can also cause
+excessive marking upon bursty packet arrivals. This can result in link
+under-utilization, for example when packets have passed through a wireless link,
+where they are grouped into aggregates then sent at line rate from the receiver.
+With WiFi, bursts of up to 4ms may occur.
 
 Note that burstiness is distinguished from jitter, which is associated with a
 variance in inter-packet gaps, but does not necessarily consist of well-defined
@@ -551,15 +551,16 @@ tests from the Czech Republic to Portland, varying the CCA (congestion control
 algorithm and Qdisc (queueing discipline). The access link in Czech uses a
 PowerBeam 5AC-400 with Ubiquiti's
 [airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology, while in Portland,
-1Gbit fiber is used. The only known AQM on the path was from the Qdisc under
+1Gbit fiber is used. The only known AQM on the path was in the Qdisc under
 test, on ingress in Portland.
 
 The two tables below show the steady-state goodputs obtained for each
 combination of CCA and Qdisc, at the tested rates of 20 Mbps and 25 Mbps. It can
 be seen that the CCAs using L4S signalling (in the L queue) significantly
 underutilize the link compared to classic CCAs using conventional RFC3168
-signalling. BBR2 sees a significant reduction in goodput when responding to L4S
-signaling in DualPI2, vs when it relies on conventional signals from fq_codel.
+signalling. Also note that BBR2 sees a significant reduction in goodput when
+responding to L4S signaling in DualPI2, vs when it relies on conventional
+signals from fq_codel.
 
 **20 Mbps Bottleneck**
 
