@@ -602,8 +602,8 @@ and a 20 Mbps DualPI2 bottleneck. The reductions in throughput around T=80 to
 T=130 are responses to dropped packets, and are excluded from the steady-state
 throughput calculations. There is some amount of "random" loss on the path, so
 we didn't want that to be the determining factor in the results, but instead
-wanted to focus primarily on the congestion control response. Even allowing for
-that, TCP Prague significantly underutilizes the link.
+wanted to focus primarily on the high-fidelity congestion control response. Even
+allowing for that, TCP Prague significantly underutilizes the link.
 
 ![Throughput for TCP Prague through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png)
 *Figure 14- Throughput for TCP Prague through bursty link, 20 Mbps DualPI2 bottleneck*
@@ -614,10 +614,19 @@ flow through the DualPI2 L queue:
 ![Throughput for TCP CUBIC through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_tput.png)
 *Figure 15- Throughput for TCP CUBIC through bursty link, 20 Mbps DualPI2 bottleneck*
 
-The difference is due to the tight AQM marking and short L queue, relative to
-the bursty packet arrivals. In the TCP sequence diagrams in *Figure 16* and
-*Figure 17*, we can compare the difference in burstiness between the paced
-packets from TCP Prague as they are sent:
+Another way to look at these results is from the standpoint of
+[Network Power](https://ieeexplore.ieee.org/abstract/document/1095007),
+interpreted here as Throughput / Average Latency. At a baseline RTT of 160ms,
+the losses in goodput observed in L4S transports cannot be compensated for by
+the reductions in queueing delay. Here are ballpark estimates of network power
+for the 25Mbps bottleneck:
+* TCP Prague: 12.58 Mbps / 165ms TCP RTT = 0.076
+* TCP CUBIC: 19.75 Mbps / 175ms TCP RTT = 0.113
+
+The difference in goodputs is due to the tight AQM marking and short L queue,
+relative to the bursty packet arrivals. In the TCP sequence diagrams in *Figure
+16* and *Figure 17*, we can compare the difference in burstiness between the
+paced packets from TCP Prague as they are sent:
 
 ![Time sequence diagram for TCP Prague at the sender](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_snd_tseq.png)
 *Figure 17- Time sequence diagram for TCP Prague at the sender*
