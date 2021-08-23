@@ -533,25 +533,26 @@ rates vary several times over the course of a flow.
 ### Underutilization with Bursty Links
 
 The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
-1 ms threshold, which while usually effective for keeping queues shorter, causes
-excessive marking for bursty packet arrivals. This results in link
-under-utilization for bursty Internet traffic. Burstiness can come from the link
-layer, for example with WiFi, where bursts of up to about 4ms are sent, or just
-from cross-flow traffic through shared bottlenecks.
+1 ms threshold, which while designed to keep queues shorter, causes excessive
+marking for bursty packet arrivals. This results in link under-utilization for
+bursty Internet traffic. Burstiness can come from the link layer, for example
+with WiFi, where bursts of up to about 4ms can be sent, or just from cross-flow
+traffic through shared bottlenecks.
 
-Note that burstiness is distinguished from jitter in general, which is
-associated with a variance in inter-packet gaps, but does not necessarily
-consist of well-defined bursts of packets at line rate. In any case, bursty
-links can be expected on the Internet.
+Note that burstiness is distinguished from jitter, which is associated with a
+variance in inter-packet gaps, but does not necessarily consist of well-defined
+bursts of packets at line rate. In any case, bursty links can be expected on the
+Internet.
 
 #### Underutilization with Bursty Links (Real-World Tests)
 
 Using a [real world test setup](#real-world-tests), we ran 5 minute single flow
 tests from the Czech Republic to Portland, varying the CCA (congestion control
-algorithm and Qdisc (queueing discipline). The access link in Czech uses
-Ubiquiti's [airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology, while
-in Portland, 1Gbit fiber is used. The only known AQM on the path was from the
-Qdisc on ingress in Portland, configured for each test.
+algorithm and Qdisc (queueing discipline). The access link in Czech uses a
+PowerBeam 5AC-400 with Ubiquiti's [airMAX
+AC](https://www.ui.com/airmax/airmax-ac/) technology, while in Portland, 1Gbit
+fiber is used. The only known AQM on the path was from the Qdisc on ingress in
+Portland, configured for each test.
 
 The two tables below show the steady-state goodputs obtained for each
 combination of CCA and Qdisc, at the tested rates of 20 Mbps and 25 Mbps. It can
@@ -563,8 +564,8 @@ conventional signals from fq_codel.
 
 **20 Mbps Bottleneck**
 
-| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retransmits | Links |
-| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----------- | ----- |
+| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retr. | Links |
+| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----- | ----- |
 | Prague | DualPI2 | L |  **11.00** | 145.55 | 295 | 3 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd.pcap.gz) | 
 | BBR2 | DualPI2 | L | **13.49** | 2.94 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd.pcap.gz) |
 | BBR2 | fq_codel | - | 18.47 | 2.75 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd.pcap.gz) |
@@ -573,8 +574,8 @@ conventional signals from fq_codel.
 
 **25 Mbps Bottleneck**
 
-| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retransmits | Links |
-| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----------- | ----- |
+| CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retr. | Links |
+| --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----- | ----- |
 | Prague | DualPI2 | L |  **12.58** | 52.22 | 169.03 | 2 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd.pcap.gz) | 
 | BBR2 | DualPI2 | L | **15.18** | 14.13 | 295 | 8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd.pcap.gz) |
 | BBR2 | fq_codel | - | 23.10 | 2.74 | 295 | 13 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd.pcap.gz) |
@@ -584,11 +585,13 @@ conventional signals from fq_codel.
 The table columns are as follows:
 * CCA: congestion control algorithm
 * Qdisc: queueing discipline
-* Queue: DualPI2 queue (where applicable)
+* Queue: DualPI2 queue (L or C), where applicable
 * Goodput<sub>SS</sub>: goodput at steady-state
-* T<sub>start</sub>: start time of steady-state
-* T<sub>end</sub>: end time of steady-state
-* Retransmits: number of TCP retransmits during test, as determined by
+* T<sub>start</sub>: start time of steady-state, relative to start of
+  measurement flow
+* T<sub>end</sub>: end time of steady-state, relative to start of
+  measurement flow
+* Retr.: number of TCP retransmits during test, as determined by
   Wireshark's \`tcp.analysis.retransmission\`
 * Links: links to throughput plot, TCP RTT plot, and pcap
 
@@ -614,11 +617,12 @@ flow through the DualPI2 L queue:
 The difference is due to the tight AQM marking and short L queue, relative to
 the bursty packet arrivals. In the TCP sequence diagrams in *Figure 16* and
 *Figure 17*, we can compare the difference in burstiness between the paced
-packets from TCP Prague as they are sent, and see how much of the even pacing
-at the sender has been lost by the time the packets reach the receiver.
+packets from TCP Prague as they are sent:
 
 ![Time sequence diagram for TCP Prague at the sender](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_snd_tseq.png)
 *Figure 17- Time sequence diagram for TCP Prague at the sender*
+
+and as they are received:
 
 ![Time sequence diagram for TCP Prague at the receiver](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_rcv_tseq.png)
 *Figure 17- Time sequence diagram for TCP Prague at the receiver*
