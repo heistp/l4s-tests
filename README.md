@@ -547,8 +547,8 @@ Internet.
 #### Underutilization with Bursty Links (Real-World Tests)
 
 Using a [real world test setup](#real-world-tests), we ran 5 minute single flow
-tests from the Czech Republic to Portland, varying the CCA (congestion control
-algorithm and Qdisc (queueing discipline). The access link in Czech uses a
+tests from the Czech Republic to Portland, varying the congestion control
+algorithm (CCA) and queueing discipline (Qdisc). The access link in Czech uses a
 PowerBeam 5AC-400 with Ubiquiti's
 [airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology, while in Portland,
 1Gbit fiber is used. The only known AQM on the path was in the Qdisc under
