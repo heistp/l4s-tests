@@ -367,7 +367,7 @@ traffic in DualPI2(L), DualPI2(C) and Codel queues, and measured the goodput for
 CUBIC and Prague, with and without Skype competition.  While the bursty Skype
 traffic has little impact on conventional AQMs and CCAs, we see significantly
 reduced utilization for L4S Prague flows in DualPI2 when Skype is in the
-L queue, and also some utilization with Skype is in the C queue.
+L queue, and also, to a lesser extent, when Skype traffic is in the C queue.
 
 *Important Note:* There was a mistake in the test configuration that placed UDP
 packets with length > 1024 in the L queue, instead of UDP packets with port >
