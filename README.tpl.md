@@ -363,16 +363,21 @@ ultimately require flow separation.
 ### Underutilization with Bursty Traffic
 
 Using a [real world test setup](#real-world-tests), we placed Skype video
-traffic (1.79 Mbps bitrate) in DualPI2(L), DualPI2(C) and Codel queues, and
-measured the goodput for CUBIC and Prague, with and without Skype competition.
-While the bursty Skype traffic has little impact on conventional AQMs and CCAs,
-we see significantly reduced utilization for L4S Prague flows in DualPI2, when
-Skype is in either the L queue, or the C queue.
+traffic in DualPI2(L), DualPI2(C) and Codel queues, and measured the goodput for
+CUBIC and Prague, with and without Skype competition.  While the bursty Skype
+traffic has little impact on conventional AQMs and CCAs, we see significantly
+reduced utilization for L4S Prague flows in DualPI2 when Skype is in the
+L queue, and also some utilization with Skype is in the C queue.
+
+*Important Note:* There was a mistake in the test configuration that placed UDP
+packets with length > 1024 in the L queue, instead of UDP packets with port >
+1024. This means that less Skype traffic was in L than was intended.
 
 *Figure 7* below uses data from the subsections that follow. Goodput is measured
 using relative TCP sequence number differences over time. The theoretical
-maximum goodput with Skype is the CCA's goodput without competition, minus 1.79
-Mbps for Skype.
+maximum goodput with Skype is the CCA's goodput without competition, minus the
+Skype bitrate calculated from the pcap (about 2.3 Mbps for the Prague runs and
+1.8 Mbps for the CUBIC runs).
 
 ![CCA Goodput with Skype Video as Competition](results/skype/tput/skype_cca_goodput_barchart.svg)
 
@@ -381,12 +386,12 @@ Mbps for Skype.
 #### Underutilization with Bursty Traffic (Prague in DualPI2)
 
 With Prague in DualPI2, we see remarkable underutilization with Skype traffic in
-L, with a 15.97 Mbps backoff in steady-state goodput in response to 1.79 Mbps of
+L, with a 15.97 Mbps backoff in steady-state goodput in response to 2.3 Mbps of
 Skype traffic. Some would argue that bursty traffic must not be placed in L. We
 leave it as an exercise for the reader to determine how feasible that is.
 
 We also see significant underutilization with Skype traffic in C, with a 5.63
-Mbps backoff in goodput in response to 1.79 Mbps of Skype traffic, when bursts
+Mbps backoff in goodput in response to 2.3 Mbps of Skype traffic, when bursts
 that arrive in C impact L via the queue coupling mechanism.
 
 | CCA | Qdisc | Skype | T<sub>start</sub> | T<sub>end</sub> | State | Goodput (Mbps) | Backoff (Mbps) | Links |
