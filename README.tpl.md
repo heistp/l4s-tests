@@ -542,50 +542,48 @@ The default marking scheme used in the DualPI2 L queue begins at a shallow, sub
 excessive marking upon bursty packet arrivals. This can result in link
 under-utilization, for example when packets have passed through a wireless link,
 where they are grouped into aggregates then sent at line rate from the receiver.
-With WiFi, bursts of up to 4ms may occur.
+With WiFi, bursts of up to 4ms may occur. Noting
+[RFC7567, Section 4.3](https://datatracker.ietf.org/doc/html/rfc7567#section-4.3),
+it is possible to tune DualPI2 using the \`step_thresh\` parameter.
 
 Note that burstiness is distinguished from jitter, which is associated with a
 variance in inter-packet gaps, but does not necessarily consist of well-defined
-bursts of packets at line rate. In any case, bursty links are common on the
-Internet.
+bursts of packets at line rate.
 
 #### Underutilization with Bursty Links (Real-World Tests)
 
 Using a [real world test setup](#real-world-tests), we ran 5 minute single flow
-tests from the Czech Republic to Portland, varying the congestion control
-algorithm (CCA) and queueing discipline (Qdisc). The access link in Czech uses a
-PowerBeam 5AC-400 with Ubiquiti's
-[airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology, while in Portland,
-1Gbit fiber is used. The only known AQM on the path was in the Qdisc under
-test, on ingress in Portland.
+tests from the Czech Republic under two different conditions:
+- upload tests were done to Portland, USA, with a 160ms RTT
+- download tests were done from a metro area server, with a 7ms RTT
 
-The two tables below show the steady-state goodputs obtained for each
-combination of CCA and Qdisc, at the tested rates of 20 Mbps and 25 Mbps. It can
-be seen that the CCAs using L4S signalling (in the L queue) significantly
-underutilize the link compared to classic CCAs using conventional RFC3168
-signalling. Also note that BBR2 sees a significant reduction in goodput when
-responding to L4S signaling in DualPI2, vs when it relies on conventional
-signals from fq_codel.
+##### Bursty Link Underutilization Test (Portland, 160ms RTT)
+
+This was an upload test from Czech the Portland. The access link in Czech uses
+a PowerBeam 5AC-400 with Ubiquiti's
+[airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology. The access link in
+Portland is 1Gbit fiber. The Qdisc was applied at the receiving server, on
+ingress.
 
 **20 Mbps Bottleneck**
 
 | CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retr. | Links |
 | --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----- | ----- |
-| Prague | DualPI2 | L |  **11.00** | 145.55 | 295 | 3 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd.pcap.gz) | 
-| BBR2 | DualPI2 | L | **13.49** | 2.94 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_20mbit_snd.pcap.gz) |
-| BBR2 | fq_codel | - | 18.47 | 2.75 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_20mbit_snd.pcap.gz) |
-| CUBIC | DualPI2 | C | 16.24 | 22.94 | 295 | 5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd.pcap.gz) |
-| CUBIC | fq_codel | - | 15.78 | 2.54 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_20mbit_snd.pcap.gz) |
+| Prague | DualPI2 | L |  **11.00** | 145.55 | 295 | 3 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_20mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | **13.49** | 2.94 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_20mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | 18.47 | 2.75 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_20mbit_snd.pcap.gz) |
+| CUBIC | DualPI2 | C | 16.24 | 22.94 | 295 | 5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_20mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | 15.78 | 2.54 | 295 | 7 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_20mbit_snd.pcap.gz) |
 
 **25 Mbps Bottleneck**
 
 | CCA | Qdisc | Queue | Goodput<sub>SS</sub> | T<sub>start</sub> | T<sub>end</sub> | Retr. | Links |
 | --- | ----- | ----- | -------------------- | ----------------- | --------------- | ----- | ----- |
-| Prague | DualPI2 | L |  **12.58** | 52.22 | 169.03 | 2 | [tput](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_25mbit_snd.pcap.gz) | 
-| BBR2 | DualPI2 | L | **15.18** | 14.13 | 295 | 8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_dualpi2_25mbit_snd.pcap.gz) |
-| BBR2 | fq_codel | - | 23.10 | 2.74 | 295 | 13 | [tput](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/bbr2_fq_codel_25mbit_snd.pcap.gz) |
-| CUBIC | DualPI2 | C | 19.75 | 13.44 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_25mbit_snd.pcap.gz) |
-| CUBIC | fq_codel | - | 18.64 | 13.85 | 295 | 4 | [tput](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/cubic_fq_codel_25mbit_snd.pcap.gz) |
+| Prague | DualPI2 | L |  **12.58** | 52.22 | 169.03 | 2 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_25mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | **15.18** | 14.13 | 295 | 8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_dualpi2_25mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | 23.10 | 2.74 | 295 | 13 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/bbr2_fq_codel_25mbit_snd.pcap.gz) |
+| CUBIC | DualPI2 | C | 19.75 | 13.44 | 295 | 11 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_25mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | 18.64 | 13.85 | 295 | 4 | [tput](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_25mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_25mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_fq_codel_25mbit_snd.pcap.gz) |
 
 The table columns are as follows:
 * CCA: congestion control algorithm
@@ -602,43 +600,96 @@ The table columns are as follows:
 
 **Analysis:**
 
-In *Figure 14* below, we can see TCP Prague's throughput through the bursty link
-and a 20 Mbps DualPI2 bottleneck. The reductions in throughput around T=80 to
-T=130 are responses to dropped packets, and are excluded from the steady-state
-throughput calculations. There is some amount of "random" loss on the path, so
-we didn't want that to be the determining factor in the results, but instead
-wanted to focus primarily on the high-fidelity congestion control response. Even
-allowing for that, TCP Prague significantly underutilizes the link.
+It can be seen that the CCAs using L4S signalling (in the L queue) significantly
+underutilize the link compared to classic CCAs using conventional RFC3168
+signalling.
 
-![Throughput for TCP Prague through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/prague_dualpi2_20mbit_snd_tput.png)
+In *Figure 14* below, we can see TCP Prague's throughput through the bursty
+link, to Portland, with a 20 Mbps DualPI2 bottleneck. The reductions in
+throughput around T=80 to T=130 are responses to dropped packets, and are
+excluded from the steady-state throughput calculations. There is some amount of
+"random" loss on the path, so we didn't want that to be the determining factor
+in the results, but instead wanted to focus primarily on the high-fidelity
+congestion control response. Even allowing for that, TCP Prague significantly
+underutilizes the link.
+
+![Throughput for TCP Prague through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/portland/prague_dualpi2_20mbit_snd_tput.png)
 *Figure 14- Throughput for TCP Prague through bursty link, 20 Mbps DualPI2 bottleneck*
 
 This compared to *Figure 15* below, the throughput from a conventional CUBIC
 flow through the DualPI2 L queue:
 
-![Throughput for TCP CUBIC through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/cubic_dualpi2_20mbit_snd_tput.png)
+![Throughput for TCP CUBIC through bursty link, 20Mbps DualPI2 Bottleneck](https://sce.dnsmgr.net/results/l4s-tput/portland/cubic_dualpi2_20mbit_snd_tput.png)
 *Figure 15- Throughput for TCP CUBIC through bursty link, 20 Mbps DualPI2 bottleneck*
 
-Another way to look at these results is from the standpoint of
-[Network Power](https://ieeexplore.ieee.org/abstract/document/1095007),
-interpreted here as Throughput / Average Latency. At a baseline RTT of 160ms,
-the losses in goodput observed in L4S transports cannot be compensated for by
-the reductions in queueing delay. Here are ballpark estimates of network power
-for the 25Mbps bottleneck:
-* TCP Prague: 12.58 Mbps / 165ms TCP RTT = 0.076
-* TCP CUBIC: 19.75 Mbps / 175ms TCP RTT = 0.113
+##### Bursty Link Underutilization Test (Czech, 7ms RTT)
 
-The difference in goodputs is due to the tight AQM marking and short L queue,
-relative to the bursty packet arrivals. In the TCP sequence diagrams in *Figure
-16* and *Figure 17*, we can compare the difference in burstiness between the
-paced packets from TCP Prague as they are sent:
+This was download test to a location in Czech from a metro area server. The
+access link uses a PowerBeam 5AC-400 with Ubiquiti's
+[airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology. The metro area
+server is connected with 1Gbit Ethernet. The Qdisc was applied on a middlebox
+in the same Ethernet LAN as the receiving server, behind the wireless access
+link. Here, we also explore the effects of raising the \`step_thresh\` parameter
+from the default of 1ms, to 5ms.
 
-![Time sequence diagram for TCP Prague at the sender](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_snd_tseq.png)
-*Figure 17- Time sequence diagram for TCP Prague at the sender*
+**20 Mbps Bottleneck**
 
-and as they are received:
+| CCA | Qdisc | Queue | step_thresh | Goodput<sub>mean</sub> | Links |
+| --- | ----- | ----- | ----------- | ---------------------- | ----- |
+| Prague | DualPI2 | L | 1ms (default) | **14.3** | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_20mbit_snd.pcap.gz) | 
+| Prague | DualPI2 | L | 5ms | 18.5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_20mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | 1ms (default) | **11.3** | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_20mbit_snd.pcap.gz) |
+| BBR2 | DualPI2 | L | 5ms | 18.1 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_20mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | n/a | 18.5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_20mbit_snd_rtt.png) |
+| CUBIC | DualPI2 | C | n/a | 18.9 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_20mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | n/a | 18.8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_20mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_20mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_20mbit_snd.pcap.gz) |
 
-![Time sequence diagram for TCP Prague at the receiver](https://sce.dnsmgr.net/results/l4s-tput/tseq/prague_dualpi2_20mbit_rcv_tseq.png)
+**40 Mbps Bottleneck**
+
+| CCA | Qdisc | Queue | step_thresh | Goodput<sub>mean</sub> | Links |
+| --- | ----- | ----- | ----------- | ---------------------- | ----- |
+| Prague | DualPI2 | L | 1ms (default) | **22.0** | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_40mbit_snd.pcap.gz) | 
+| Prague | DualPI2 | L | 5ms | 36.9 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/prague_dualpi2_step_thresh_5ms_40mbit_snd.pcap.gz) | 
+| BBR2 | DualPI2 | L | 1ms (default) | **16.9** | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_40mbit_snd.pcap.gz) |
+| BBR2 | DualPI2 | L | 5ms | **30.6** | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_dualpi2_step_thresh_5ms_40mbit_snd.pcap.gz) |
+| BBR2 | fq_codel | - | n/a | 36.8 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/bbr2_fq_codel_40mbit_snd.pcap.gz) |
+| CUBIC | DualPI2 | C | n/a | 37.5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_dualpi2_40mbit_snd.pcap.gz) |
+| CUBIC | fq_codel | - | n/a | 37.5 | [tput](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_40mbit_snd_tput.png), [rtt](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_40mbit_snd_rtt.png), [pcap](https://sce.dnsmgr.net/results/l4s-tput/czech/cubic_fq_codel_40mbit_snd.pcap.gz) |
+
+The table columns are as follows:
+* CCA: congestion control algorithm
+* Qdisc: queueing discipline
+* Queue: DualPI2 queue (L or C), where applicable
+* step_thresh: DualPI2 \`step_thresh\` parameter, where applicable
+* Goodput<sub>mean</sub>: mean goodput (according to iperf3 receiver)
+* Links: links to throughput plot, TCP RTT plot, and pcap
+
+**Analysis:**
+
+The results at local 7ms RTTs mirror those at 160ms, in that we see the link
+underutilized with the default threshold of 1ms. Raising the bottleneck
+bandwidth from 20 Mbps to 40 Mbps did not improve the percentage utilization,
+but made it worse, possibly due to larger aggregates (this comparing Prague's
+goodput of 14.3 Mbps in a 20 Mbps bottleneck, and 22 Mbps in a 40 Mbps
+bottleneck).
+
+Here, we also test raising the threshold to 5ms. This increases Prague's goodput
+nearly to that of conventional CCAs, but even with the increase, BBR2 still saw
+a lower goodput through the 40 Mbps bottleneck than conventional CCAs (30.6 Mbps
+vs 37.5 Mbps).
+
+The difference in goodputs is likely due to the tight AQM marking and short L
+queue, relative to the bursty packet arrivals. In the TCP sequence diagrams in
+*Figure 16* and *Figure 17* taken from tests to Portland, we can compare the
+difference in burstiness between the paced packets from TCP Prague as they are
+sent:
+
+![Time sequence diagram for TCP Prague at the sender](https://sce.dnsmgr.net/results/l4s-tput/portland/tseq/prague_dualpi2_20mbit_snd_tseq.png)
+*Figure 16- Time sequence diagram for TCP Prague at the sender*
+
+and as they are received at a bottleneck:
+
+![Time sequence diagram for TCP Prague at the receiver](https://sce.dnsmgr.net/results/l4s-tput/portland/tseq/prague_dualpi2_20mbit_rcv_tseq.png)
 *Figure 17- Time sequence diagram for TCP Prague at the receiver*
 
 #### Underutilization with Bursty Links (Lab Tests)
