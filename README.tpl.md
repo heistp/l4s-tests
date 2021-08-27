@@ -666,12 +666,12 @@ The table columns are as follows:
 
 **Analysis:**
 
-The results at local 7ms RTTs mirror those at 160ms, in that we see the link
-underutilized with the default threshold of 1ms. Raising the bottleneck
-bandwidth from 20 Mbps to 40 Mbps did not improve the percentage utilization,
-but made it worse, possibly due to larger aggregates (this comparing Prague's
-goodput of 14.3 Mbps in a 20 Mbps bottleneck, and 22 Mbps in a 40 Mbps
-bottleneck).
+The results at local 7ms RTTs mirror those at 160ms, in that we see L4S
+transports underutilize the link with the default threshold of 1ms. Raising the
+bottleneck bandwidth from 20 Mbps to 40 Mbps seemed to increase the relative
+underutilization (this comparing Prague's goodput of 14.3 Mbps in a 20 Mbps
+bottleneck, and 22 Mbps in a 40 Mbps bottleneck). One explanation for this could
+be larger aggregate sizes.
 
 Here, we also test raising the threshold to 5ms. This increases Prague's goodput
 nearly to that of conventional CCAs, but even with the increase, BBR2 still saw
