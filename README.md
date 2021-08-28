@@ -371,7 +371,8 @@ L queue, and also, to a lesser extent, when Skype traffic is in the C queue.
 
 *Important Note:* There was a mistake in the test configuration that placed UDP
 packets with length > 1024 in the L queue, instead of UDP packets with port >
-1024. This means that less Skype traffic was in L than was intended.
+1024. This affects only the two tests with Skype in the L queue, and means that
+for those tests, there was less Skype traffic in L than was intended.
 
 *Figure 7* below uses data from the subsections that follow. Goodput is measured
 using relative TCP sequence number differences over time. The theoretical
@@ -554,8 +555,9 @@ bursts of packets at line rate.
 
 Using a [real world test setup](#real-world-tests), we ran 5 minute single flow
 tests from the Czech Republic under two different conditions:
-- upload tests were done to Portland, USA, with a 160ms RTT
-- download tests were done from a metro area server, with a 7ms RTT
+- upload tests were done to Portland, USA, with a 160ms baseline RTT
+- download tests were done from a server within the same ISP, with a 7ms
+  baseline RTT
 
 ##### Bursty Link Underutilization Test (Portland, 160ms RTT)
 
@@ -624,13 +626,12 @@ flow through the DualPI2 L queue:
 
 ##### Bursty Link Underutilization Test (Czech, 7ms RTT)
 
-This was download test to a location in Czech from a metro area server. The
-access link uses a PowerBeam 5AC-400 with Ubiquiti's
-[airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology. The metro area
-server is connected with 1Gbit Ethernet. The Qdisc was applied on a middlebox
-in the same Ethernet LAN as the receiving server, behind the wireless access
-link. Here, we also explore the effects of raising the `step_thresh` parameter
-from the default of 1ms, to 5ms.
+This was download test from a server within the same ISP, connected with 1Gbit
+Ethernet. The access link uses a PowerBeam 5AC-400 with Ubiquiti's
+[airMAX AC](https://www.ui.com/airmax/airmax-ac/) technology. The Qdisc was
+applied on a middlebox in the same Ethernet LAN as the receiving server, behind
+the wireless access link. Here, we also explore the effects of raising the
+`step_thresh` parameter from the default of 1ms, to 5ms.
 
 **20 Mbps Bottleneck**
 
